@@ -2,7 +2,7 @@
 
 A retro golf game played from behind the golfer, in the spirit of the mid-80s pseudo-3D golf games, with modern pixel art. The courses come from the course generator in Fairway Pixels (`davebulwer-web/golf`), so every seed and style gives a new 18 holes. The golfer stands side on, as in the originals, and every shot (putts too) uses the same camera, set so he draws at the art's own pixel size with hills, doglegs, bunkers, water and woods.
 
-![Title screen](screenshots/00-title.png)
+![Title screen](screenshots/01-title.png)
 
 ![Teeing off](screenshots/03-tee.png)
 
