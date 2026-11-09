@@ -61,7 +61,7 @@ const game = {
     count: 1, players: [{ name: 'PLAYER 1', shirt: 0 }, { name: 'PLAYER 2', shirt: 1 }, { name: 'PLAYER 3', shirt: 2 }, { name: 'PLAYER 4', shirt: 3 }],
     difficulty: 1, course: 0, style: 0, seed: 1 + Math.floor(Math.random() * 99999), holes: 0, tee: 1, row: 0, editing: -1,
   },
-  showCard: false, hints: true,
+  showCard: false, hints: true, track: true,
 };
 
 // ---------- Course and holes ----------
@@ -319,6 +319,7 @@ function updateFlight(dt) {
   const speed = game.keysDown.has(' ') ? 3 : 1;
   fl.i = Math.min(fl.res.path.length - 1, fl.i + dt * 60 * speed);
   const k = Math.floor(fl.i);
+  followBall(dt, k);
   if (!fl.sounds.land && fl.res.landed && k > 2) {
     const p = fl.res.path[k];
     if (distTo(p, fl.res.landed) < 0.5 && p.z - groundAt(game.world, p.x, p.y) < 0.2) { fl.sounds.land = true; if (lieAt(game.world, p.x, p.y) !== 'water') sfx('thud'); }
@@ -327,6 +328,40 @@ function updateFlight(dt) {
     fl.done = true;
     shotOver();
   }
+}
+
+// The camera chases the ball once the golfer has finished his swing: low and
+// close behind a putt, further back and above the ball for a full shot.
+function followBall(dt, k) {
+  const fl = game.flight;
+  const putt = game.club === PUTTER;
+  if (!game.track && !putt) return;
+  if (fl.t < (putt ? 0.3 : 0.55)) return;
+  const path = fl.res.path, w = game.world;
+  const b = path[k];
+  // Which way the ball is going (keep the last heading once it stops).
+  const back = path[Math.max(0, k - 8)];
+  const dx = b.x - back.x, dy = b.y - back.y, d = Math.hypot(dx, dy);
+  if (d > 0.05) fl.heading = Math.atan2(dx, dy);
+  if (fl.heading == null) fl.heading = game.aimYaw;
+  const D = putt ? 2.8 : 16;
+  const tx = b.x - Math.sin(fl.heading) * D, ty = b.y - Math.cos(fl.heading) * D;
+  const cam = game.cam;
+  const a = 1 - Math.exp(-dt * (putt ? 5 : 3));
+  if (!fl.following) { fl.following = true; game.cam = cam ? { ...cam } : game.cam; }
+  const c = game.cam;
+  c.x += (tx - c.x) * a; c.y += (ty - c.y) * a;
+  const gb = groundAt(w, b.x, b.y);
+  const wantEye = Math.max(groundAt(w, c.x, c.y) + (putt ? 0.9 : 2.5), (putt ? gb + 0.9 : b.z + 2));
+  c.eye += (wantEye - c.eye) * a;
+  if (c.eye < groundAt(w, c.x, c.y) + 0.6) c.eye = groundAt(w, c.x, c.y) + 0.6;
+  // Look at the ball, and tilt so it sits a little below the middle of the view.
+  c.yaw = Math.atan2(b.x - c.x, b.y - c.y);
+  const t = Math.max(0.5, Math.hypot(b.x - c.x, b.y - c.y));
+  const want = putt ? 190 : 150;
+  c.horizon = Math.max(-120, Math.min(260, want - ((c.eye - b.z) * c.f) / t));
+  c.ball = { x: b.x, y: b.y };
+  game.dirty = true;
 }
 
 const SCORE_NAMES = { '-4': 'CONDOR!', '-3': 'ALBATROSS!', '-2': 'EAGLE!', '-1': 'BIRDIE!', 0: 'PAR', 1: 'BOGEY', 2: 'DOUBLE BOGEY', 3: 'TRIPLE BOGEY' };
@@ -441,8 +476,13 @@ function drawScene() {
   const w = game.world;
   const p = game.players[game.cur];
   if (game.dirty) {
-    const clearAt = game.phase === 'fly' ? game.fly.to.ball : p.ball;
-    renderScene(view, w, cam, { backdrop: game.backdrop, sprites: game.art.sprites }, { clear: { x: clearAt.x, y: clearAt.y, r: 6.5 } });
+    let clear;
+    if (game.phase === 'fly') clear = { x: game.fly.to.ball.x, y: game.fly.to.ball.y, r: 6.5 };
+    else if (game.flight && game.flight.following && cam.ball) {
+      const mx = (cam.x + cam.ball.x) / 2, my = (cam.y + cam.ball.y) / 2;
+      clear = { x: mx, y: my, r: Math.hypot(cam.x - cam.ball.x, cam.y - cam.ball.y) / 2 + 3 };
+    } else clear = { x: p.ball.x, y: p.ball.y, r: 6.5 };
+    renderScene(view, w, cam, { backdrop: game.backdrop, sprites: game.art.sprites }, { clear });
     game.dirty = false;
   }
   restoreScene(view);
@@ -485,7 +525,7 @@ function drawScene() {
   ctx.putImageData(view.img, 0, 0);
   // The golfer.
   if ((game.phase === 'aim' || game.phase === 'swing') && game.cur >= 0) drawGolfer(p, p.ball);
-  else if ((game.phase === 'flight' || game.phase === 'result') && game.flight) drawGolfer(p, game.flight.from);
+  else if ((game.phase === 'flight' || game.phase === 'result') && game.flight && !game.flight.following) drawGolfer(p, game.flight.from);
 }
 
 function drawAimMarker() {
@@ -754,7 +794,7 @@ function drawBanner(dt) {
 
 function drawHints() {
   if (!game.hints || game.phase !== 'aim') return;
-  const lines = ['LEFT/RIGHT OR DRAG: AIM', 'UP/DOWN OR WHEEL: CLUB', 'HOLD SPACE OR MOUSE FOR POWER,', 'LET GO, THEN PRESS ON THE SNAP', 'TAB: SCORECARD   M: SOUND'];
+  const lines = ['LEFT/RIGHT OR DRAG: AIM', 'UP/DOWN OR WHEEL: CLUB', 'HOLD SPACE OR MOUSE FOR POWER,', 'LET GO, THEN PRESS ON THE SNAP', 'TAB: CARD  M: SOUND  C: BALL CAM'];
   ctx.fillStyle = 'rgba(14,16,28,0.7)';
   ctx.fillRect(4, VH - 8 - lines.length * 8, 128, lines.length * 8 + 4);
   lines.forEach((l, i) => smallText(ctx, l, 8, VH - 6 - (lines.length - i) * 8 + 2, C.text));
@@ -979,6 +1019,7 @@ window.addEventListener('keydown', (e) => {
   if (game.mode === 'final') { if (k === ' ' || k === 'Enter') game.mode = 'title'; return; }
   if (game.mode !== 'play') return;
   if (k === 'm' || k === 'M') toggleMute();
+  if (k === 'c' || k === 'C') { game.track = !game.track; game.banner = { title: game.track ? 'BALL CAM ON' : 'BALL CAM OFF', sub: 'C TO CHANGE (PUTTS ALWAYS FOLLOW)', t: 1.4 }; }
   if (k === 'Escape') { game.mode = 'title'; return; }
   if (game.cardWait) { if (k === ' ' || k === 'Enter') continueAfterCard(); return; }
   if (k === 'Tab') { game.showCard = !game.showCard; return; }

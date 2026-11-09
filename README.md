@@ -15,6 +15,7 @@ Pick 1 to 4 players (each with a name and shirt colour), a level, and a course: 
 - **Swing:** hold space (or the mouse button on the view) and the power climbs up the meter; let go to set it (past 100% is an overswing: longer but wild). The marker then drops into the SNAP section at the bottom of the meter: press as it crosses the white snap line. Early hooks the ball left, late slices it right, so a deliberate early or late snap is how you draw or fade a shot. The green band is how forgiving the snap is at your level.
 - **Putting:** power only: hold and let go. The marker by the hole is a little post whose shadow falls the way the green slopes, longer where it's steeper. The panel shows how far up or down the hole is, and Novices get a tick on the meter for the hole's distance on a flat green.
 - **Wind:** the compass shows it relative to your aim. Novice has no wind.
+- **Ball cam:** once the golfer has finished his swing the camera chases the ball: close behind a putt, and above and behind a full shot. `C` turns it off for full shots (putts always follow).
 - `Tab` shows the scorecard, `M` turns sound off, `Esc` goes back to the title. Holding space during a shot speeds it up.
 
 Whoever is farthest from the hole plays next; the best score on a hole has the honour on the next tee. Water costs a stroke (drop back on dry land), out of bounds (past the woods at the edge of the hole) is stroke and distance, and you pick up after ten.
@@ -38,7 +39,7 @@ Plain JavaScript and a canvas, no engine or libraries.
 
 ## Art
 
-All the art was made with [Pixellab](https://pixellab.ai): the golfer's address pose, swing and putting stroke (animated from the address pose), eleven trees, four bushes, the flag and a horizon backdrop for each course style. The swing is side on with the arms extended to the ball and the head down on it until impact: the backswing and putting stroke are posed with Pixellab's skeleton animation (`tools/skeleton-swing.py`, one skeleton per frame), and the follow-through turns into a finish seen from behind (`tools/finish-pose.py`, joined to impact with Pixellab's first-and-last-frame animation). The originals are in `assets/raw`; `tools/pl.py`, `tools/gen-scenery.sh` and `tools/gen-backdrops.sh` regenerate them (they need `PIXELLAB_API_KEY`), and `python3 tools/pack-assets.py` packs them into `src/assets.js`.
+All the art was made with [Pixellab](https://pixellab.ai): the golfer's address pose, swing and putting stroke (animated from the address pose), eleven trees, four bushes, the flag and a horizon backdrop for each course style. The swing is side on with the arms extended to the ball and the head down on it until impact: the backswing and putting stroke are posed with Pixellab's skeleton animation (`tools/skeleton-swing.py`, one skeleton per frame), and the follow-through turns into a finish seen from behind (`tools/finish-pose.py`, joined to impact with Pixellab's first-and-last-frame animation in `tools/follow-through.py`). The originals are in `assets/raw`; `tools/pl.py`, `tools/gen-scenery.sh` and `tools/gen-backdrops.sh` regenerate them (they need `PIXELLAB_API_KEY`), and `python3 tools/pack-assets.py` packs them into `src/assets.js`.
 
 ![Alpine](screenshots/07-alpine-bunker.png)
 ![Desert](screenshots/08-desert-tee.png)
