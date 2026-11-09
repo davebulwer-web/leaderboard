@@ -2,7 +2,8 @@
 // the snap, wind), bouncing, rolling down slopes, trees, water and the hole.
 // Units are yards and seconds; z is height above the sea, as the terrain is.
 
-import { lieAt, groundAt, groundSlope, treesNear } from './world.js';
+import { lieAt, groundAt, groundSlope, treesNear, surfIdxAt } from './world.js';
+import { blobGap } from './gen/course-generator.js';
 
 export const G = 10.73;          // gravity, yards / s^2
 export const MPH = 0.4889;       // yards / s per mph
@@ -99,9 +100,40 @@ export function speedFor(club, carry) {
   return (lo + hi) / 2;
 }
 
-// Where in a lie's range a ball sits, the same for the same spot.
-export function lieFactor(lie, x, y) {
-  const [a, b] = GROUND[lie]?.lie ?? [1, 1];
+// How a lie cuts a full shot's distance, as in the old games: a range, and
+// where in it a ball sits depends on how it lies (the same for the same spot).
+export const LIE_GRADES = {
+  tee: { name: 'TEE', range: [1, 1] },
+  fairway: { name: 'FAIRWAY', range: [1, 1] },
+  green: { name: 'GREEN', range: [1, 1] },
+  fringe: { name: 'FRINGE', range: [0.95, 0.98] },
+  lightRough: { name: 'LIGHT ROUGH', range: [0.82, 0.92] },
+  deepRough: { name: 'DEEP ROUGH', range: [0.6, 0.75] },
+  fairwayBunker: { name: 'FAIRWAY BUNKER', range: [0.7, 0.85] },
+  greensideBunker: { name: 'GREENSIDE BUNKER', range: [0.55, 0.7] },
+  trees: { name: 'TREES', range: [0.4, 0.6] },
+  waste: { name: 'WASTE GROUND', range: [0.8, 0.9] },
+};
+
+// Which grade of lie the ball is in at (x, y).
+export function lieGrade(world, x, y) {
+  const lie = lieAt(world, x, y);
+  if (lie === 'rough') {
+    // First cut: short grass within a few yards.
+    for (const r of [2, 4]) for (let a = 0; a < 8; a++) {
+      const s = surfIdxAt(world, x + Math.cos(a * 0.785) * r, y + Math.sin(a * 0.785) * r);
+      if (s >= 2 && s <= 5) return 'lightRough';
+    }
+    return 'deepRough';
+  }
+  if (lie === 'bunker') return blobGap(world.hole.green, { x, y }) < 25 ? 'greensideBunker' : 'fairwayBunker';
+  return LIE_GRADES[lie] ? lie : 'fairway';
+}
+
+const lieRange = (grade) => (LIE_GRADES[grade] ?? LIE_GRADES.fairway).range;
+export const lieMid = (grade) => { const [a, b] = lieRange(grade); return (a + b) / 2; };
+export function lieFactor(grade, x, y) {
+  const [a, b] = lieRange(grade);
   const u = Math.abs(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1;
   return a + (b - a) * u;
 }
@@ -122,12 +154,10 @@ function hitTree(world, s) {
 
 // Play a full shot. Returns { path: [{x,y,z}] sampled every 1/60 s, end, result,
 // carry, hitTree, landed }. result: 'rest' | 'water' | 'oob' | 'holed'.
-export function playShot(world, from, { club, power, yaw, snap, wind, rng, lie }) {
-  const hole = world.hole;
-  const lf = lieFactor(lie, from.x, from.y);
-  let carry = club.carry * power * lf;
+export function playShot(world, from, { club, power, yaw, snap, wind, rng, grade }) {
+  const lie = lieAt(world, from.x, from.y);
+  let carry = club.carry * power * lieFactor(grade, from.x, from.y);
   if (club.key === '1W' && lie !== 'tee') carry *= lie === 'fairway' ? 0.92 : 0.75;
-  if ((lie === 'bunker') && (club.key === 'SW' || club.key === 'LW')) carry = club.carry * power * Math.min(1, lf + 0.2);
   const speed = speedFor(club, Math.max(3, carry));
   const dir = yaw + snap.push;
   const a = (club.launch * Math.PI) / 180 * (lie === 'trees' ? 0.7 : 1);

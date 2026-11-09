@@ -8,7 +8,7 @@ import { COURSE_LIST } from './gen/course-list.js';
 import { buildWorld, lieAt, groundAt, groundSlope, SURF_NAMES, surfIdxAt, hash2 } from './world.js';
 import { lookFor, STYLE_NAMES } from './styles.js';
 import { makeView, renderScene, restoreScene, drawSprite, drawBall, fillEllipse, project3, camAxes, pack } from './render.js';
-import { CLUBS, PUTTER, MPH, CUP_R, LIE_NAMES, GROUND, playShot, playPutt, dropFromWater, lieFactor } from './physics.js';
+import { CLUBS, PUTTER, MPH, CUP_R, LIE_NAMES, LIE_GRADES, GROUND, playShot, playPutt, dropFromWater, lieGrade, lieMid } from './physics.js';
 import { loadArt, SHIRTS } from './sprites.js';
 import { bigText, smallText, bigWidth } from './font.js';
 import { sfx, toggleMute, isMuted } from './audio.js';
@@ -157,13 +157,14 @@ function setupShot() {
   const p = game.players[game.cur];
   const lie = lieAt(game.world, p.ball.x, p.ball.y);
   p.lie = lie;
+  p.grade = lieGrade(game.world, p.ball.x, p.ball.y);
   const pin = pinOf();
   const d = distTo(p.ball, pin);
   game.putting = lie === 'green';
   let club;
   if (game.putting) club = PUTTER;
   else {
-    const lf = lieFactor(lie, p.ball.x, p.ball.y);
+    const lf = lieMid(p.grade);
     const need = d / lf;
     club = 0;
     for (let i = 0; i < PUTTER; i++) if (CLUBS[i].carry >= need * 0.93) club = i;
@@ -178,6 +179,11 @@ function setupShot() {
   game.aimYaw = autoAim(p.ball, club);
   game.swing = null;
   game.shotCam = shotCamera(p.ball, game.aimYaw);
+}
+
+// What a full swing with the current club carries from here, on average for the lie.
+function clubYards(p) {
+  return Math.round(CLUBS[game.club].carry * lieMid(p.grade) * (CLUBS[game.club].key === '1W' && p.lie !== 'tee' ? (p.lie === 'fairway' ? 0.92 : 0.75) : 1));
 }
 
 // Straight at the pin when it's in reach, otherwise along the hole's line.
@@ -305,7 +311,7 @@ function launch() {
   } else {
     res = playShot(game.world, from, {
       club: CLUBS[game.club], power: Math.min(1.1, s.power), yaw: game.aimYaw,
-      snap: { push: -eff * 0.035, tilt: eff * 0.42 }, wind: game.wind, rng: game.rng, lie: p.lie,
+      snap: { push: -eff * 0.035, tilt: eff * 0.42 }, wind: game.wind, rng: game.rng, grade: p.grade,
     });
     sfx('hit');
   }
@@ -394,7 +400,7 @@ function shotOver() {
     p.ball = { ...res.end };
     const lie = lieAt(game.world, p.ball.x, p.ball.y);
     const left = distTo(p.ball, pinOf());
-    title = LIE_NAMES[lie] ?? lie.toUpperCase();
+    title = LIE_GRADES[lieGrade(game.world, p.ball.x, p.ball.y)]?.name ?? LIE_NAMES[lie] ?? lie.toUpperCase();
     if (lie === 'green') sub = `${Math.round(left * 3)} FEET TO THE HOLE`;
     else sub = `${yards} YARDS  ${Math.round(left)} TO GO`;
     if (res.hitTree) { title = 'HIT A TREE!'; sub = `${LIE_NAMES[lie] ?? lie}, ${Math.round(left)} TO GO`; }
@@ -534,7 +540,7 @@ function drawAimMarker() {
   const putt = game.club === PUTTER;
   let d;
   if (putt) d = Math.max(0.5, Math.min(distTo(p.ball, pinOf()), PUTT_RANGES[game.puttRange]));
-  else d = CLUBS[game.club].carry * lieFactor(p.lie, p.ball.x, p.ball.y);
+  else d = clubYards(p);
   const ax = p.ball.x + Math.sin(game.aimYaw) * d, ay = p.ball.y + Math.cos(game.aimYaw) * d;
   const az = groundAt(w, ax, ay);
   if (putt) {
@@ -680,6 +686,7 @@ function drawPanel() {
   if (pc) {
     const clubName = game.club === PUTTER ? `PUTTER ${Math.round(PUTT_RANGES[game.puttRange] * 3)}FT` : CLUBS[game.club].name;
     bigText(ctx, clubName, X + 8, y, C.gold);
+    if (game.club !== PUTTER) bigText(ctx, `${clubYards(pc)}Y`, X + PANEL - 6, y, C.text, { align: 'right' });
     y += 10;
     const d = distTo(pc.ball, pinOf());
     if (game.putting || d < 20) smallText(ctx, `TO HOLE ${Math.round(d * 3)} FEET`, X + 8, y, C.text);
@@ -690,7 +697,10 @@ function drawPanel() {
       smallText(ctx, txt, X + PANEL - 6, y, rise > 0 ? C.red : C.green, { align: 'right' });
     }
     y += 8;
-    smallText(ctx, `LIE ${LIE_NAMES[pc.lie] ?? ''}`, X + 8, y, C.dim);
+    const g = LIE_GRADES[pc.grade];
+    const [ra, rb] = g ? g.range : [1, 1];
+    smallText(ctx, `LIE ${g ? g.name : ''}`, X + 8, y, ra < 1 ? C.red : C.dim);
+    if (ra < 1 && game.club !== PUTTER) smallText(ctx, ra === rb ? `${Math.round(ra * 100)}%` : `${Math.round(ra * 100)}-${Math.round(rb * 100)}%`, X + PANEL - 6, y, C.red, { align: 'right' });
     y += 9;
   }
   drawWind(X + 26, y + 15);
@@ -765,11 +775,12 @@ function drawMeter(x, y) {
   if (s && s.stage >= 1) {
     const pw = Math.round((s.stage === 1 ? s.level : s.power) * 100);
     smallText(ctx, putt ? `${Math.round(PUTT_RANGES[game.puttRange] * 3 * (pw / 100))} FT` : `${pw}%`, tx, top + 2, pw > 100 ? C.red : C.gold);
+    if (!putt) smallText(ctx, `${Math.round((clubYards(game.players[game.cur]) * pw) / 100)} YDS`, tx, top + 10, C.text);
   }
   if (s && s.stage === 3 && !putt) {
     const e = snapEffect(s.snap, 1);
     const txt = Math.abs(e) < 0.01 ? 'PURE' : e > 0 ? (e > 0.6 ? 'HOOK' : 'DRAW') : (e < -0.6 ? 'SLICE' : 'FADE');
-    smallText(ctx, txt, tx, top + 10, C.cyan);
+    smallText(ctx, txt, tx, top + 18, C.cyan);
   }
   const help = putt ? ['HOLD SPACE', 'OR MOUSE,', 'LET GO TO', 'PUTT'] : ['HOLD FOR', 'POWER, LET', 'GO, PRESS', 'ON SNAP'];
   help.forEach((l, i) => smallText(ctx, l, tx, top + 30 + i * 8, C.dim));
