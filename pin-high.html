@@ -2256,6 +2256,13 @@ const SNAP_LINE = -0.14, SNAP_BOTTOM = -0.3; // the snap section sits below the 
 const TEES = [
   { key: 'yellow', name: 'FORWARD' }, { key: 'white', name: 'WHITE' }, { key: 'blue', name: 'BLUE' }, { key: 'black', name: 'CHAMPIONSHIP' },
 ];
+const FORMATS = [
+  { key: 'stroke', name: 'STROKE PLAY', note: 'FEWEST STROKES WINS', min: 1, max: 4 },
+  { key: 'match', name: 'MATCH PLAY', note: 'WIN HOLES, NOT STROKES. 2 PLAYERS', min: 2, max: 2 },
+  { key: 'skins', name: 'SKINS', note: 'BEST SCORE TAKES THE HOLE, TIES CARRY OVER', min: 2, max: 4 },
+  { key: 'stableford', name: 'STABLEFORD', note: 'POINTS: PAR 2, BIRDIE 3, BOGEY 1', min: 1, max: 4 },
+  { key: 'practice', name: 'PRACTICE HOLE', note: 'ANY HOLE, AS OFTEN AS YOU LIKE. U: MULLIGAN', min: 1, max: 4 },
+];
 const HOLE_SETS = [{ name: '18 HOLES', from: 0, n: 18 }, { name: 'FRONT 9', from: 0, n: 9 }, { name: 'BACK 9', from: 9, n: 9 }];
 const NAMED = Object.values(COURSE_LIST).flat();
 const STYLE_KEYS = Object.keys(STYLE_NAMES);
@@ -2271,7 +2278,7 @@ const game = {
   mode: 'loading', art: null, t: 0,
   setup: {
     count: 1, players: [{ name: 'PLAYER 1', shirt: 0 }, { name: 'PLAYER 2', shirt: 1 }, { name: 'PLAYER 3', shirt: 2 }, { name: 'PLAYER 4', shirt: 3 }],
-    difficulty: 1, course: 0, style: 0, seed: 1 + Math.floor(Math.random() * 99999), holes: 0, tee: 1, row: 0, editing: -1,
+    difficulty: 1, course: 0, style: 0, seed: 1 + Math.floor(Math.random() * 99999), holes: 0, tee: 1, row: 0, editing: -1, format: 0, practiceHole: 0,
   },
   showCard: false, hints: true, track: true,
 };
@@ -2298,8 +2305,12 @@ function startRound() {
     game.look = lookFor(def.style);
     game.backdrop = game.art.backdrops[def.style] ?? game.art.backdrops.parkland;
     game.weather = roundWeather(game.course, 1);
+    game.format = FORMATS[st.format].key;
     const hs = HOLE_SETS[st.holes];
-    game.holeList = Array.from({ length: hs.n }, (_, i) => hs.from + i);
+    game.holeList = game.format === 'practice' ? [st.practiceHole] : Array.from({ length: hs.n }, (_, i) => hs.from + i);
+    game.skins = { carry: 0, winners: [] };
+    game.match = { results: [], over: false };
+    game.lastShot = null;
     game.holeIdx = 0;
     game.diff = DIFFICULTY[st.difficulty];
     game.tee = TEES[st.tee].key;
@@ -2339,11 +2350,15 @@ function loadHole() {
     game.holeYards = teeYards;
     for (const p of game.players) {
       p.ball = { x: tee.x, y: tee.y };
-      p.strokes = 0; p.holed = false; p.lie = 'tee';
+      p.strokes = 0; p.holed = false; p.pickedUp = false; p.lie = 'tee';
     }
     game.mode = 'play';
     game.cur = -1;
-    game.banner = { title: `HOLE ${n + 1}`, sub: `PAR ${hole.par}  ${teeYards} YARDS`, t: 2.6 };
+    game.lastShot = null; game.conceded = null; game.holeNews = null;
+    let sub = `PAR ${hole.par}  ${teeYards} YARDS`;
+    if (game.format === 'skins') sub += `  ${game.skins.carry + 1} SKIN${game.skins.carry ? 'S' : ''}`;
+    if (game.format === 'match' && game.match.results.length) { const m = matchStatus(); sub = matchText(m.up, m.left, false); }
+    game.banner = { title: `HOLE ${n + 1}`, sub, t: 2.6 };
     nextTurn(true);
   }, 30);
 }
@@ -2352,6 +2367,20 @@ const pinOf = () => game.hole.pin;
 const distTo = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 // Who plays next: anyone yet to tee off (in honour order), then whoever is farthest from the pin.
+// Practice: take the last shot again.
+function mulligan() {
+  const m = game.lastShot;
+  if (game.format !== 'practice' || !m || game.phase !== 'aim') return;
+  const p = game.players[m.pi];
+  p.ball = { ...m.ball }; p.strokes = m.strokes; p.holed = false; p.pickedUp = false;
+  game.lastShot = null;
+  game.cur = m.pi;
+  setupShot();
+  game.cam = { ...game.shotCam }; game.dirty = true;
+  game.banner = { title: 'MULLIGAN', sub: 'TAKE IT AGAIN', t: 1.4, color: C.cyan };
+  sfx('blip');
+}
+
 function nextTurn(first = false) {
   const left = game.players.map((p, i) => i).filter((i) => !game.players[i].holed);
   if (!left.length) return holeFinished();
@@ -2516,6 +2545,7 @@ function launch() {
   const s = game.swing;
   const eff = snapEffect(s.snap, s.power);
   const from = { ...p.ball };
+  game.lastShot = { pi: game.cur, ball: from, strokes: p.strokes };
   let res;
   if (game.club === PUTTER) {
     res = playPutt(game.world, from, { yaw: game.aimYaw, distance: PUTT_RANGES[game.puttRange] * Math.min(1.1, s.power), snap: { push: (game.rng() - 0.5) * 0.006 * game.setup.difficulty, tilt: 0 }, rng: game.rng });
@@ -2619,14 +2649,87 @@ function shotOver() {
   }
   // Give up after ten.
   if (!p.holed && p.strokes >= 10) { p.holed = true; p.strokes = 10; title = 'PICKED UP'; sub = 'TEN STROKES'; }
+  if (!p.holed && game.format === 'stableford' && p.strokes >= game.hole.par + 2) {
+    p.holed = true; p.strokes = game.hole.par + 2; p.pickedUp = true; title = 'PICKED UP'; sub = 'NO POINTS ON THIS HOLE';
+  }
   if (p.holed) p.scores[game.holeIdx] = p.strokes;
+  game.conceded = null;
+  concedeLostHoles();
+  if (game.conceded) sub = `${game.conceded} PICKS UP, HOLE LOST`;
   game.banner = { title, sub, t: 2.2, color: res.result === 'holed' ? '#ffd84a' : res.result === 'rest' ? '#f4f0e0' : '#ff7a6a' };
   game.phase = 'result';
   game.resultT = res.result === 'holed' ? 2.4 : 1.6;
 }
 
+// Match play: once a player can no longer halve the hole, they pick up and lose it.
+function concedeLostHoles() {
+  if (game.format !== 'match') return;
+  const done = game.players.filter((q) => q.holed);
+  if (!done.length) return;
+  const best = Math.min(...done.map((q) => q.strokes));
+  for (const q of game.players) {
+    if (!q.holed && q.strokes >= best) {
+      q.holed = true; q.pickedUp = true; q.strokes += 1;
+      q.scores[game.holeIdx] = q.strokes;
+      game.conceded = q.name;
+    }
+  }
+}
+
+// Points and results for the formats, hole by hole.
+function stablefordPoints(score, par) { return score == null ? 0 : Math.max(0, 2 - (score - par)); }
+function matchStatus() {
+  const r = game.match.results;
+  const up = r.filter((v) => v === 0).length - r.filter((v) => v === 1).length;
+  return { up, left: game.holeList.length - r.length };
+}
+function matchText(up, left, final) {
+  if (up === 0) return final ? 'MATCH HALVED' : 'ALL SQUARE';
+  const lead = game.players[up > 0 ? 0 : 1].name;
+  const n = Math.abs(up);
+  if (n > left) return `${lead} WINS ${left ? `${n} & ${left}` : `${n} UP`}`;
+  if (final) return `${lead} WINS ${n} UP`;
+  return `${lead} ${n} UP${n === left ? ' (DORMIE)' : ''}`;
+}
+// The column on the right of the panel and the card for each player.
+function standing(p, i) {
+  switch (game.format) {
+    case 'stableford': return { text: `${p.scores.reduce((t, s, k) => t + stablefordPoints(s, parFor(k)), 0)}PT`, color: C.gold };
+    case 'skins': { const n = game.skins.winners.filter((w) => w && w.who === i).reduce((t, w) => t + w.skins, 0); return { text: `${n}SK`, color: n ? C.gold : C.text }; }
+    case 'match': { const { up } = matchStatus(); const me = i === 0 ? up : -up; return { text: me === 0 ? 'AS' : me > 0 ? `${me}UP` : `${-me}DN`, color: me > 0 ? C.red : me < 0 ? C.cyan : C.text }; }
+    default: { const tp = toPar(p); return { text: parText(tp), color: tp < 0 ? C.red : tp > 0 ? C.cyan : C.text }; }
+  }
+}
+function scoreHole() {
+  const h = game.holeIdx;
+  const sc = game.players.map((q) => q.scores[h]);
+  const best = Math.min(...sc);
+  const winners = sc.map((v, i) => i).filter((i) => sc[i] === best);
+  if (game.format === 'skins') {
+    if (winners.length === 1) {
+      const n = 1 + game.skins.carry;
+      game.skins.winners[h] = { who: winners[0], skins: n };
+      game.skins.carry = 0;
+      return { title: `${game.players[winners[0]].name} WINS ${n} SKIN${n > 1 ? 'S' : ''}`, color: C.gold };
+    }
+    game.skins.carry++;
+    return { title: `SKIN CARRIES OVER`, sub: `${game.skins.carry + 1} SKINS ON THE NEXT HOLE`, color: C.cyan };
+  }
+  if (game.format === 'match') {
+    game.match.results[h] = winners.length === 1 ? winners[0] : -1;
+    const { up, left } = matchStatus();
+    if (Math.abs(up) > left || left === 0) game.match.over = true;
+    return { title: winners.length === 1 ? `${game.players[winners[0]].name} WINS THE HOLE` : 'HOLE HALVED', sub: matchText(up, left, left === 0), color: C.gold };
+  }
+  if (game.format === 'stableford') {
+    return { title: game.players.map((q) => `${q.name.slice(0, 8)} ${stablefordPoints(q.scores[h], parFor(h))}`).join('  '), sub: 'STABLEFORD POINTS', color: C.gold };
+  }
+  return null;
+}
+
 function holeFinished() {
   game.phase = 'done';
+  game.holeNews = scoreHole();
   // Honour: best score on this hole tees off first next time.
   game.honour = [...game.honour].sort((a, b) => game.players[a].scores[game.holeIdx] - game.players[b].scores[game.holeIdx]);
   game.showCard = true;
@@ -2634,9 +2737,17 @@ function holeFinished() {
   sfx('jingle');
 }
 
-function continueAfterCard() {
+function continueAfterCard(next = false) {
   game.showCard = false;
   game.cardWait = false;
+  if (game.format === 'practice') {
+    // Again on the same hole, or N for the next one.
+    if (next) game.holeList = [(game.holeList[0] + 1) % game.course.holes.length];
+    for (const p of game.players) p.scores = [];
+    game.cam = null;
+    return loadHole();
+  }
+  if (game.match.over) { game.mode = 'final'; sfx('clap'); return; }
   if (game.holeIdx + 1 >= game.holeList.length) { game.mode = 'final'; sfx('clap'); return; }
   game.holeIdx++;
   game.cam = null;
@@ -2856,8 +2967,8 @@ function drawPanel() {
     ctx.fillRect(X + 7, y, 4, 5);
     smallText(ctx, q.name.slice(0, 12), X + 14, y, cur ? C.gold : C.text);
     smallText(ctx, q.holed ? `${q.strokes}` : q.strokes ? `${q.strokes}` : '-', X + 96, y, C.dim, { align: 'right' });
-    const tp = toPar(q);
-    smallText(ctx, parText(tp), X + PANEL - 8, y, tp < 0 ? C.red : tp > 0 ? C.cyan : C.text, { align: 'right' });
+    const sd = standing(q, i);
+    smallText(ctx, sd.text, X + PANEL - 8, y, sd.color, { align: 'right' });
     y += 10;
   });
   y += 1;
@@ -3018,6 +3129,7 @@ function drawBanner(dt) {
 function drawHints() {
   if (!game.hints || game.phase !== 'aim') return;
   const lines = ['LEFT/RIGHT OR DRAG: AIM', 'UP/DOWN OR WHEEL: CLUB', 'HOLD SPACE OR MOUSE FOR POWER,', 'LET GO, THEN PRESS ON THE SNAP', 'TAB: CARD  M: SOUND  C: BALL CAM'];
+  if (game.format === 'practice') lines.push('U: MULLIGAN');
   ctx.fillStyle = 'rgba(14,16,28,0.7)';
   ctx.fillRect(4, VH - 8 - lines.length * 8, 128, lines.length * 8 + 4);
   lines.forEach((l, i) => smallText(ctx, l, 8, VH - 6 - (lines.length - i) * 8 + 2, C.text));
@@ -3028,7 +3140,7 @@ function drawScorecard() {
   const holes = game.holeList;
   const nine = holes.length > 9 ? [holes.slice(0, 9), holes.slice(9)] : [holes];
   const rowH = 9;
-  const h = 26 + nine.length * (rowH * (players.length + 2) + 6) + 14;
+  const h = 26 + nine.length * (rowH * (players.length + 2) + 6) + 23;
   const w = VW - 16;
   const x0 = 8, y0 = Math.max(4, Math.round((VH - h) / 2));
   ctx.fillStyle = 'rgba(12,14,26,0.92)';
@@ -3049,7 +3161,7 @@ function drawScorecard() {
     set.forEach((hn, k) => { const par = game.course.holes[hn].par; pt += par; smallText(ctx, `${par}`, x0 + nameW + k * colW + 8, y, C.text, { align: 'center' }); });
     smallText(ctx, `${pt}`, x0 + nameW + 9 * colW + 10, y, C.text, { align: 'center' });
     y += rowH;
-    players.forEach((p) => {
+    players.forEach((p, pi) => {
       const [r, g, b] = SHIRTS[p.shirt].rgb;
       ctx.fillStyle = `rgb(${r},${g},${b})`;
       ctx.fillRect(x0 + 4, y, 3, 5);
@@ -3065,6 +3177,10 @@ function drawScorecard() {
         if (s < par) { ctx.strokeStyle = C.red; ctx.beginPath(); ctx.arc(cx + 0.5, y + 2.5, 5, 0, Math.PI * 2); ctx.stroke(); }
         if (s > par) { ctx.strokeStyle = C.cyan; ctx.strokeRect(cx - 4.5, y - 2.5, 10, 10); }
         smallText(ctx, `${s}`, cx, y, s < par ? C.red : C.text, { align: 'center' });
+        // The hole's winner in skins and match play, and Stableford points.
+        const won = game.format === 'skins' ? game.skins.winners[idx]?.who === pi : game.format === 'match' ? game.match.results[idx] === pi : false;
+        if (won) { ctx.fillStyle = C.gold; ctx.fillRect(cx + 5, y - 1, 2, 2); }
+        if (game.format === 'stableford') smallText(ctx, `${stablefordPoints(s, parFor(idx))}`, cx + 9, y + 3, C.dim);
       });
       if (any) smallText(ctx, `${tot}`, x0 + nameW + 9 * colW + 10, y, C.gold, { align: 'center' });
       y += rowH;
@@ -3072,9 +3188,13 @@ function drawScorecard() {
     y += 6;
   });
   // Totals to par.
-  const parts = players.map((p) => `${p.name.slice(0, 10)} ${parText(toPar(p))}`).join('   ');
+  let parts = players.map((p, i) => `${p.name.slice(0, 10)} ${standing(p, i).text}`).join('   ');
+  if (game.format === 'match') { const m = matchStatus(); parts = matchText(m.up, m.left, m.left === 0); }
+  if (game.format === 'skins' && game.skins.carry) parts += `   (${game.skins.carry} CARRIED)`;
   smallText(ctx, parts, x0 + w / 2, y, C.gold, { align: 'center' });
-  if (game.cardWait) smallText(ctx, 'SPACE OR CLICK TO CONTINUE', x0 + w / 2, y0 + h - 9 + 12 > VH ? y0 + h - 9 : y0 + h + 3, C.text, { align: 'center' });
+  const news = game.cardWait && game.holeNews;
+  if (news) smallText(ctx, news.sub ? `${news.title}  ${news.sub}` : news.title, x0 + w / 2, y + 9, news.color, { align: 'center' });
+  if (game.cardWait) smallText(ctx, game.format === 'practice' ? 'SPACE: PLAY IT AGAIN   N: NEXT HOLE' : game.match.over ? 'SPACE OR CLICK: MATCH OVER' : 'SPACE OR CLICK TO CONTINUE', x0 + w / 2, y0 + h - 9 + 12 > VH ? y0 + h - 9 : y0 + h + 3, C.text, { align: 'center' });
 }
 
 // ---------- Title, setup, final ----------
@@ -3116,6 +3236,7 @@ function setupRows() {
   const st = game.setup;
   const rows = [{ key: 'count', label: 'PLAYERS', value: `${st.count}` }];
   for (let i = 0; i < st.count; i++) rows.push({ key: 'player', i, label: `PLAYER ${i + 1}`, value: st.editing === i ? `${st.players[i].name}_` : st.players[i].name, shirt: st.players[i].shirt });
+  rows.push({ key: 'format', label: 'GAME', value: FORMATS[st.format].name, note: FORMATS[st.format].note });
   rows.push({ key: 'difficulty', label: 'LEVEL', value: DIFFICULTY[st.difficulty].name, note: DIFFICULTY[st.difficulty].note });
   const named = st.course > 0 ? NAMED[st.course - 1] : null;
   rows.push({ key: 'course', label: 'COURSE', value: named ? named.name : 'RANDOM COURSE', note: named ? `${STYLE_NAMES[named.style]}, ${named.tour.toUpperCase()} LEVEL` : 'A NEW COURSE FROM A SEED' });
@@ -3123,7 +3244,8 @@ function setupRows() {
     rows.push({ key: 'style', label: 'STYLE', value: STYLE_NAMES[STYLE_KEYS[st.style]] });
     rows.push({ key: 'seed', label: 'SEED', value: `${st.seed}`, note: `${randomCourseName(STYLE_KEYS[st.style], st.seed)}  (R: NEW SEED)` });
   }
-  rows.push({ key: 'holes', label: 'ROUND', value: HOLE_SETS[st.holes].name });
+  if (FORMATS[st.format].key === 'practice') rows.push({ key: 'practiceHole', label: 'HOLE', value: `${st.practiceHole + 1}` });
+  else rows.push({ key: 'holes', label: 'ROUND', value: HOLE_SETS[st.holes].name });
   rows.push({ key: 'tee', label: 'TEES', value: TEES[st.tee].name });
   rows.push({ key: 'start', label: '', value: 'TEE OFF!' });
   return rows;
@@ -3133,7 +3255,9 @@ function changeSetup(row, dir) {
   const st = game.setup;
   const wrap = (v, n) => (v + n) % n;
   switch (row.key) {
-    case 'count': st.count = Math.max(1, Math.min(4, st.count + dir)); break;
+    case 'count': st.count = Math.max(FORMATS[st.format].min, Math.min(FORMATS[st.format].max, st.count + dir)); break;
+    case 'format': st.format = wrap(st.format + dir, FORMATS.length); st.count = Math.max(FORMATS[st.format].min, Math.min(FORMATS[st.format].max, st.count)); break;
+    case 'practiceHole': st.practiceHole = wrap(st.practiceHole + dir, 18); break;
     case 'player': st.players[row.i].shirt = wrap(st.players[row.i].shirt + dir, SHIRTS.length); break;
     case 'difficulty': st.difficulty = wrap(st.difficulty + dir, DIFFICULTY.length); break;
     case 'course': st.course = wrap(st.course + dir, NAMED.length + 1); break;
@@ -3153,7 +3277,7 @@ function activateSetup(row) {
   else changeSetup(row, 1);
 }
 
-const SETUP_Y0 = 50, SETUP_ROW = 17;
+const SETUP_Y0 = 46, SETUP_ROW = 17;
 function drawSetup(dt) {
   drawShowcase(dt);
   ctx.fillStyle = 'rgba(10,12,24,0.72)';
@@ -3190,11 +3314,22 @@ function drawFinal(dt) {
   drawShowcase(dt);
   ctx.fillStyle = 'rgba(10,12,24,0.75)';
   ctx.fillRect(0, 0, SW, SH);
-  bigText(ctx, 'ROUND OVER', SW / 2, 30, C.gold, { scale: 3, align: 'center' });
+  bigText(ctx, game.format === 'match' ? 'MATCH OVER' : 'ROUND OVER', SW / 2, 30, C.gold, { scale: 3, align: 'center' });
   smallText(ctx, game.course.name, SW / 2, 58, C.dim, { align: 'center' });
-  const ranked = [...game.players].sort((a, b) => toPar(a) - toPar(b));
-  ranked.forEach((p, i) => {
-    const y = 80 + i * 22;
+  if (game.format === 'match') {
+    const m = matchStatus();
+    bigText(ctx, matchText(m.up, m.left, true), SW / 2, 74, C.text, { scale: 2, align: 'center' });
+  }
+  const pts = (p) => p.scores.reduce((t, s, k) => t + stablefordPoints(s, parFor(k)), 0);
+  const skins = (i) => game.skins.winners.filter((w) => w && w.who === i).reduce((t, w) => t + w.skins, 0);
+  const order = game.players.map((p, i) => i);
+  if (game.format === 'stableford') order.sort((a, b) => pts(game.players[b]) - pts(game.players[a]));
+  else if (game.format === 'skins') order.sort((a, b) => skins(b) - skins(a));
+  else if (game.format !== 'match') order.sort((a, b) => toPar(game.players[a]) - toPar(game.players[b]));
+  const top = game.format === 'match' ? 100 : 80;
+  order.forEach((pi, i) => {
+    const p = game.players[pi];
+    const y = top + i * 22;
     const tot = p.scores.reduce((t, s) => t + (s ?? 0), 0);
     bigText(ctx, `${i + 1}`, 140, y, C.gold, { scale: 2 });
     const [r, g, b] = SHIRTS[p.shirt].rgb;
@@ -3202,8 +3337,8 @@ function drawFinal(dt) {
     ctx.fillRect(164, y + 2, 8, 10);
     bigText(ctx, p.name, 180, y + 3, C.text);
     bigText(ctx, `${tot}`, 330, y + 3, C.text, { align: 'right' });
-    const tp = toPar(p);
-    bigText(ctx, parText(tp), 380, y + 3, tp < 0 ? C.red : tp > 0 ? C.cyan : C.text, { align: 'right' });
+    const sd = standing(p, pi);
+    bigText(ctx, sd.text, 390, y + 3, sd.color, { align: 'right' });
   });
   if (Math.floor(game.t * 2) % 2 === 0) bigText(ctx, 'SPACE OR CLICK FOR THE CLUBHOUSE', SW / 2, SH - 30, '#ffffff', { align: 'center' });
 }
@@ -3244,7 +3379,8 @@ window.addEventListener('keydown', (e) => {
   if (k === 'm' || k === 'M') toggleMute();
   if (k === 'c' || k === 'C') { game.track = !game.track; game.banner = { title: game.track ? 'BALL CAM ON' : 'BALL CAM OFF', sub: 'C TO CHANGE (PUTTS ALWAYS FOLLOW)', t: 1.4 }; }
   if (k === 'Escape') { game.mode = 'title'; return; }
-  if (game.cardWait) { if (k === ' ' || k === 'Enter') continueAfterCard(); return; }
+  if (game.cardWait) { if (k === ' ' || k === 'Enter') continueAfterCard(); if ((k === 'n' || k === 'N') && game.format === 'practice') continueAfterCard(true); return; }
+  if (k === 'u' || k === 'U') mulligan();
   if (k === 'Tab') { game.showCard = !game.showCard; return; }
   if (k === ' ' || k === 'Enter') swingDown();
   if (k === 'ArrowUp' || k === 'w' || k === 'W') clubBy(-1);
@@ -3387,7 +3523,7 @@ function step(dt) {
 
 loadArt().then((art) => {
   game.art = art;
-  window.pinHigh = { game, setupShot, shotCamera, nextTurn };
+  window.pinHigh = { game, setupShot, shotCamera, nextTurn, startRound, holeFinished, continueAfterCard, mulligan };
   setupShowcase();
   game.mode = 'title';
   const q = new URLSearchParams(location.search);
@@ -3395,6 +3531,8 @@ loadArt().then((art) => {
   if (q.has('style')) game.setup.style = Math.max(0, STYLE_KEYS.indexOf(q.get('style')));
   if (q.has('seed')) game.setup.seed = Number(q.get('seed')) || 1;
   if (q.has('level')) game.setup.difficulty = Number(q.get('level'));
+  if (q.has('format')) { game.setup.format = Math.max(0, FORMATS.findIndex((f) => f.key === q.get('format'))); game.setup.count = Math.max(FORMATS[game.setup.format].min, game.setup.count); }
+  if (q.has('players')) game.setup.count = Number(q.get('players'));
   if (q.has('play')) startRound();
 });
 requestAnimationFrame(frame);

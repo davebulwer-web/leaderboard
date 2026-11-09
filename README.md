@@ -10,6 +10,14 @@ Download `pin-high.html` and open it in a browser. It's one self-contained file.
 
 Pick 1 to 4 players (each with a name and shirt colour), a level, and a course: either one of the named courses from Fairway Pixels' course list, or a random course from any of the eight styles (parkland, links, desert, heathland, alpine, tropical, woodland, stadium) and a seed. Then play 18 holes, the front 9 or the back 9 from the forward, white, blue or championship tees.
 
+Game types:
+
+- **Stroke play:** fewest strokes over the round wins.
+- **Match play** (2 players): win, lose or halve each hole. The match ends as soon as one player is more holes up than there are holes left ("3 & 2"), and a player who can no longer halve a hole picks up.
+- **Skins** (2 to 4 players): the outright best score takes the hole's skin; a tie carries it over to the next hole.
+- **Stableford:** points for each hole (double bogey or worse 0, bogey 1, par 2, birdie 3, eagle 4). You pick up once you can't score.
+- **Practice hole:** pick any hole and play it as often as you like. `U` takes your last shot again (a mulligan), and after holing out Space plays the hole again and `N` moves to the next one.
+
 - **Aim:** left/right arrows (hold Shift for fine aim), or drag sideways on the view. The view turns with your aim, and the yellow marker shows where a full shot with that club carries on flat, calm ground.
 - **Club:** up/down arrows or the mouse wheel. A club is picked for you each shot, and the panel shows how far it carries from your lie on flat, calm ground. While you swing, the meter shows the power and the yards that power gives. On the green, up/down changes the putter's range (9 to 108 feet).
 - **Swing:** hold space (or the mouse button on the view) and the power climbs up the meter; let go to set it (past 100% is an overswing: longer but wild). The marker then drops into the SNAP section at the bottom of the meter: press as it crosses the white snap line. Early hooks the ball left, late slices it right, so a deliberate early or late snap is how you draw or fade a shot. The green band is how forgiving the snap is at your level.
