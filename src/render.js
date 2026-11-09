@@ -83,7 +83,7 @@ export function renderScene(view, world, cam, art, opts = {}) {
     const k0 = (x - W / 2 + 0.5) / f;
     const dx = fx + rx * k0, dy = fy + ry * k0;
     let ybuf = H;
-    let t = T_NEAR;
+    let t = T_NEAR, tPrev = T_NEAR, hPrev = -1e9, sPrev = -1;
     while (t < T_FAR && ybuf > 0) {
       const wx = cam.x + dx * t, wy = cam.y + dy * t;
       let i = Math.floor(wx - x0), j = Math.floor(wy - y0);
@@ -97,7 +97,7 @@ export function renderScene(view, world, cam, art, opts = {}) {
       } else {
         k = j * nx + i;
         s = surf[k];
-        if (t < 60) {
+        if (t < 120) {
           // Smooth heights close up, so slopes don't look like steps.
           const fxp = wx - x0 - 0.5, fyp = wy - y0 - 0.5;
           const bi = Math.max(0, Math.min(nx - 2, Math.floor(fxp))), bj = Math.max(0, Math.min(ny - 2, Math.floor(fyp)));
@@ -129,14 +129,27 @@ export function renderScene(view, world, cam, art, opts = {}) {
         const r = c[0] * light * (1 - fog) + hr * fog, g = c[1] * light * (1 - fog) + hg * fog, b = c[2] * light * (1 - fog) + hb * fog;
         let ytop = Math.ceil(sy);
         if (ytop < 0) ytop = 0;
+        // A sudden rise (a bank out of water, or a step between cells far off) shows
+        // its face in a darker, earthier colour instead of the colour of the top.
+        let yFace = ybuf;
+        const rise = h - hPrev;
+        if (rise > 0.25 && ((sPrev === 7 || sPrev === 10) && s !== 7 && s !== 10 || rise / (t - tPrev) > 1.2)) {
+          yFace = Math.max(ytop, Math.ceil(hor + ((eye - h) * f) / tPrev));
+        }
+        // Banks: the rough's colour, darkened and browned, lightly mottled.
+        const bk = base[1], bn = 0.5 + 0.08 * n;
+        const fr = (bk[0] * bn + 22) * (1 - fog) + hr * fog, fg = bk[1] * bn * 0.85 * (1 - fog) + hg * fog, fb = bk[2] * bn * 0.7 * (1 - fog) + hb * fog;
         for (let y = ytop; y < ybuf; y++) {
           const d = BAYER[(x & 3) + ((y & 3) << 2)] * QUANT;
           const p = y * W + x;
-          px[p] = (255 << 24) | (Math.min(255, Math.floor((b + d) / QUANT) * QUANT) << 16) | (Math.min(255, Math.floor((g + d) / QUANT) * QUANT) << 8) | Math.min(255, Math.floor((r + d) / QUANT) * QUANT);
+          const face = y >= yFace;
+          const cr = face ? fr : r, cg = face ? fg : g, cb = face ? fb : b;
+          px[p] = (255 << 24) | (Math.min(255, Math.floor((cb + d) / QUANT) * QUANT) << 16) | (Math.min(255, Math.floor((cg + d) / QUANT) * QUANT) << 8) | Math.min(255, Math.floor((cr + d) / QUANT) * QUANT);
           depth[p] = t;
         }
         ybuf = ytop;
       }
+      tPrev = t; hPrev = h; sPrev = s;
       t += t < 12 ? 0.07 : t * 0.0085;
     }
   }

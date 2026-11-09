@@ -1,4 +1,7 @@
-// Little synthesised sounds: the swing, the strike, the cup, a splash, a tree, applause.
+// Sounds: recorded effects for the shots, the cup, water, trees and applause
+// (src/sounds.js), and little synthesised ones for the swing and the menus.
+
+import { SOUNDS } from './sounds.js';
 
 let actx = null;
 let muted = false;
@@ -8,9 +11,41 @@ function ac() {
     const C = window.AudioContext || window.webkitAudioContext;
     if (!C) return null;
     actx = new C();
+    loadSamples(actx);
   }
   if (actx.state === 'suspended') actx.resume();
   return actx;
+}
+
+// Recorded sounds, decoded once the audio context exists.
+const samples = {};
+const lastPick = {};
+function loadSamples(a) {
+  for (const [name, list] of Object.entries(SOUNDS)) {
+    samples[name] = [];
+    for (const uri of list) {
+      const bytes = Uint8Array.from(atob(uri.split(',')[1]), (c) => c.charCodeAt(0));
+      a.decodeAudioData(bytes.buffer).then((buf) => samples[name].push(buf)).catch(() => {});
+    }
+  }
+}
+// How loud each recorded sound plays.
+const LEVEL = { driver: 0.9, iron: 0.85, chip: 0.7, bunker: 0.8, putt: 0.8, cup: 0.9, splash: 0.75, tree: 0.7, bounce: 0.45, clap: 0.6, bag: 0.4, rattle: 0.35 };
+function playSample(a, name, gain = 1) {
+  const list = samples[name];
+  if (!list || !list.length) return false;
+  // A different take from last time.
+  let i = Math.floor(Math.random() * list.length);
+  if (list.length > 1 && i === lastPick[name]) i = (i + 1) % list.length;
+  lastPick[name] = i;
+  const src = a.createBufferSource();
+  src.buffer = list[i];
+  src.playbackRate.value = 0.96 + Math.random() * 0.08;
+  const g = a.createGain();
+  g.gain.value = (LEVEL[name] ?? 0.8) * gain;
+  src.connect(g).connect(a.destination);
+  src.start();
+  return true;
 }
 
 export const toggleMute = () => (muted = !muted);
@@ -49,10 +84,14 @@ function tone(a, freq, dur, { type = 'square', gain = 0.08, delay = 0, slide = n
   o.stop(t0 + dur + 0.02);
 }
 
-export function sfx(name) {
+export function sfx(name, gain = 1) {
   if (muted) return;
   const a = ac();
   if (!a) return;
+  if (playSample(a, name, gain)) return;
+  // Synthesised stand-ins until the recordings are decoded.
+  if (name === 'driver' || name === 'iron' || name === 'chip' || name === 'bunker') name = 'hit';
+  if (name === 'bounce') name = 'thud';
   switch (name) {
     case 'whoosh': noiseBurst(a, 0.28, { freq: 600, sweep: 2600, q: 1.2, gain: 0.25, attack: 0.15 }); break;
     case 'hit': noiseBurst(a, 0.08, { freq: 2400, q: 2, gain: 0.6 }); tone(a, 1500, 0.05, { type: 'triangle', gain: 0.2 }); break;

@@ -49,6 +49,25 @@ export function buildWorld(hole, look) {
     }
   }
 
+  // Each pond lies flat at its lowest point. The terrain's height grid is coarser
+  // than a yard, so near the shore the water would otherwise ramp up to the bank.
+  const seen = new Uint8Array(nx * ny);
+  for (let k0 = 0; k0 < nx * ny; k0++) {
+    if (seen[k0] || (surf[k0] !== 7 && surf[k0] !== 10)) continue;
+    const cells = [k0];
+    seen[k0] = 1;
+    let low = Infinity;
+    for (let q = 0; q < cells.length; q++) {
+      const k = cells[q];
+      low = Math.min(low, hgt[k]);
+      const i = k % nx;
+      for (const n of [i > 0 ? k - 1 : -1, i < nx - 1 ? k + 1 : -1, k - nx, k + nx]) {
+        if (n >= 0 && n < nx * ny && !seen[n] && (surf[n] === 7 || surf[n] === 10)) { seen[n] = 1; cells.push(n); }
+      }
+    }
+    for (const k of cells) hgt[k] = low;
+  }
+
   const world = { hole, look, x0, y0, nx, ny, surf, hgt, stripe, trees: [], bushes: [] };
 
   // Trees on a jittered lattice through the woods; the odd lone tree and bush

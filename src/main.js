@@ -137,6 +137,7 @@ function loadHole() {
   game.mode = 'loadhole';
   const n = game.holeList[game.holeIdx];
   game.loadingText = `HOLE ${n + 1}`;
+  if (!isDrill()) sfx('rattle'); // walking to the tee
   setTimeout(() => {
     const hole = game.course.holes[n];
     game.hole = hole;
@@ -251,6 +252,7 @@ function nextTurn(first = false) {
   const prevCam = game.cam;
   game.cur = next;
   setupShot();
+  if (game.players[next].strokes === 0 && !isDrill()) setTimeout(() => sfx('bag'), first ? 900 : 200); // a club out of the bag on the tee
   if (!first && prevCam) startFly(prevCam, game.shotCam);
   else { game.cam = { ...game.shotCam }; game.phase = 'aim'; game.dirty = true; }
 }
@@ -400,7 +402,7 @@ function snapEffect(snapLevel, power) {
 function strike() {
   const s = game.swing;
   s.stage = 3; s.anim = 0; s.launched = false;
-  sfx(game.club === PUTTER ? 'putt' : 'whoosh');
+  if (game.club !== PUTTER) sfx('whoosh');
 }
 
 function launch() {
@@ -419,7 +421,9 @@ function launch() {
       club: CLUBS[game.club], power: Math.min(1.1, s.power), yaw: game.aimYaw,
       snap: { push: -eff * 0.035, tilt: eff * 0.42 }, wind: game.wind, rng: game.rng, grade: p.grade,
     });
-    sfx('hit');
+    // The strike: woods, irons, a chip round the green, or a splash of sand.
+    const lieNow = lieAt(game.world, from.x, from.y);
+    sfx(lieNow === 'bunker' ? 'bunker' : game.club <= 2 ? 'driver' : game.club >= 10 && distTo(from, pinOf()) < 60 ? 'chip' : 'iron', 0.6 + 0.4 * Math.min(1, s.power));
   }
   game.flight = { res, from, yaw: game.aimYaw, i: 0, t: 0, eff, power: s.power, done: false, sounds: { tree: false, land: false } };
   game.phase = 'flight';
@@ -434,8 +438,9 @@ function updateFlight(dt) {
   followBall(dt, k);
   if (!fl.sounds.land && fl.res.landed && k > 2) {
     const p = fl.res.path[k];
-    if (distTo(p, fl.res.landed) < 0.5 && p.z - groundAt(game.world, p.x, p.y) < 0.2) { fl.sounds.land = true; if (lieAt(game.world, p.x, p.y) !== 'water') sfx('thud'); }
+    if (distTo(p, fl.res.landed) < 0.5 && p.z - groundAt(game.world, p.x, p.y) < 0.2) { fl.sounds.land = true; if (lieAt(game.world, p.x, p.y) !== 'water') sfx('bounce'); }
   }
+  if (!fl.sounds.tree && fl.res.treeAt > 0 && fl.i >= fl.res.treeAt) { fl.sounds.tree = true; sfx('tree'); }
   if (fl.i >= fl.res.path.length - 1 && !fl.done) {
     fl.done = true;
     shotOver();
@@ -1432,7 +1437,7 @@ function step(dt) {
 
 loadArt().then((art) => {
   game.art = art;
-  window.pinHigh = { game, setupShot, shotCamera, nextTurn, startRound, holeFinished, continueAfterCard, mulligan };
+  window.pinHigh = { game, loadHole, setupShot, shotCamera, nextTurn, startRound, holeFinished, continueAfterCard, mulligan };
   setupShowcase();
   game.mode = 'title';
   const q = new URLSearchParams(location.search);

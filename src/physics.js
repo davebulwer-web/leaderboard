@@ -167,7 +167,7 @@ export function playShot(world, from, { club, power, yaw, snap, wind, rng, grade
     spin: club.spin * (lie === 'rough' || lie === 'trees' ? 0.6 : 1), tilt: snap.tilt,
   };
   const path = [{ x: s.x, y: s.y, z: s.z }];
-  let treeHit = null, steps = 0;
+  let treeHit = null, treeAt = -1, steps = 0;
   // In the air.
   for (; steps < 120 * 20; steps++) {
     flyStep(s, wind, DT);
@@ -176,7 +176,7 @@ export function playShot(world, from, { club, power, yaw, snap, wind, rng, grade
     if (!treeHit && path.length > 6) {
       const t = hitTree(world, s);
       if (t) {
-        treeHit = t;
+        treeHit = t; treeAt = path.length;
         const sp = Math.hypot(s.vx, s.vy) * (0.08 + 0.15 * rng());
         const ang = Math.atan2(s.vx, s.vy) + Math.PI + (rng() - 0.5) * 2.2;
         s.vx = Math.sin(ang) * sp; s.vy = Math.cos(ang) * sp; s.vz = Math.min(0, s.vz) * 0.2; s.spin = 0;
@@ -189,6 +189,7 @@ export function playShot(world, from, { club, power, yaw, snap, wind, rng, grade
   out.carry = Math.hypot(landed.x - from.x, landed.y - from.y);
   out.landed = landed;
   out.hitTree = !!treeHit;
+  out.treeAt = treeAt;
   return out;
 }
 

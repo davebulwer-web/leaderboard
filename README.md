@@ -47,7 +47,8 @@ Plain JavaScript and a canvas, no engine or libraries.
 - `src/main.js`: the game: menus, turns, the swing meter, the panel, the minimap and the scorecard.
 - `src/styles.js`: ground colours, trees and haze for each course style.
 - `src/sprites.js`, `src/assets.js`: the art (packed by `tools/pack-assets.py`); golfers are recoloured per player.
-- `src/font.js`, `src/logo.js`, `src/audio.js`: bitmap fonts, the title logo (drawn in code) and synthesised sounds.
+- `src/font.js`, `src/logo.js`: bitmap fonts and the title logo (drawn in code).
+- `src/audio.js`, `src/sounds.js`: recorded sound effects (driver, iron, chip, bunker and putt strikes, bounces, trees, water, the cup, applause, clubs) with a few synthesised ones for the swing and menus. The chosen recordings are in `assets/sounds`; `python3 tools/pack-sounds.py` packs them (add `--from <folder of .wav files>` to re-pick from the originals).
 
 `index.html` loads the modules directly (needs a local web server, e.g. `npx serve`). After changing anything in `src/`, rebuild the single file with `node tools/build.mjs`. `node tools/shots.cjs` and `node tools/shots2.cjs` save screenshots (they need Playwright).
 
