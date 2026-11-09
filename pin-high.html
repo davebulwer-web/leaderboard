@@ -2341,6 +2341,8 @@ const FORMATS = [
   { key: 'skins', name: 'SKINS', note: 'BEST SCORE TAKES THE HOLE, TIES CARRY OVER', min: 2, max: 4 },
   { key: 'stableford', name: 'STABLEFORD', note: 'POINTS: PAR 2, BIRDIE 3, BOGEY 1', min: 1, max: 4 },
   { key: 'practice', name: 'PRACTICE HOLE', note: 'ANY HOLE, AS OFTEN AS YOU LIKE. U: MULLIGAN', min: 1, max: 4 },
+  { key: 'range', name: 'DRIVING RANGE', note: 'ANY CLUB, CARRY AND TOTAL SHOWN. N: NEXT HOLE', min: 1, max: 1 },
+  { key: 'putting', name: 'PUTTING GREEN', note: 'RANDOM PUTTS ON EACH GREEN. N: NEXT GREEN', min: 1, max: 1 },
 ];
 const HOLE_SETS = [{ name: '18 HOLES', from: 0, n: 18 }, { name: 'FRONT 9', from: 0, n: 9 }, { name: 'BACK 9', from: 9, n: 9 }];
 const NAMED = Object.values(COURSE_LIST).flat();
@@ -2386,7 +2388,18 @@ function startRound() {
     game.weather = roundWeather(game.course, 1);
     game.format = FORMATS[st.format].key;
     const hs = HOLE_SETS[st.holes];
-    game.holeList = game.format === 'practice' ? [st.practiceHole] : Array.from({ length: hs.n }, (_, i) => hs.from + i);
+    // The range starts on the course's longest hole, the putting green on the first.
+    // For the range, the flattest long hole, so the flags aren't hidden over a brow.
+    const lumpiness = (h) => {
+      const t0 = h.tees[TEES[st.tee].key], base = heightAt(h, pointAt(h.line, t0));
+      let worst = 0;
+      for (let d = 20; d <= 280 && t0 + d < h.length; d += 10) worst = Math.max(worst, Math.abs(heightAt(h, pointAt(h.line, t0 + d)) - base));
+      return worst + (h.length < 400 ? 100 : 0);
+    };
+    const longest = game.course.holes.reduce((b, h, i) => (lumpiness(h) < lumpiness(game.course.holes[b]) ? i : b), 0);
+    game.stats = { balls: 0, made: 0, longest: 0 };
+    game.keep = null; game.nextBall = null;
+    game.holeList = game.format === 'practice' ? [st.practiceHole] : game.format === 'range' ? [longest] : game.format === 'putting' ? [0] : Array.from({ length: hs.n }, (_, i) => hs.from + i);
     game.skins = { carry: 0, winners: [] };
     game.match = { results: [], over: false };
     game.lastShot = null;
@@ -2438,6 +2451,8 @@ function loadHole() {
     if (game.format === 'skins') sub += `  ${game.skins.carry + 1} SKIN${game.skins.carry ? 'S' : ''}`;
     if (game.format === 'match' && game.match.results.length) { const m = matchStatus(); sub = matchText(m.up, m.left, false); }
     game.banner = { title: `HOLE ${n + 1}`, sub, t: 2.6 };
+    if (game.format === 'range') game.banner = { title: 'DRIVING RANGE', sub: `HOLE ${n + 1}, FLAGS EVERY 50 YARDS`, t: 2.6 };
+    if (game.format === 'putting') { game.players[0].ball = randomPutt(); game.banner = { title: 'PUTTING GREEN', sub: `GREEN ${n + 1}`, t: 2.2 }; }
     nextTurn(true);
   }, 30);
 }
@@ -2446,10 +2461,67 @@ const pinOf = () => game.hole.pin;
 const distTo = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 // Who plays next: anyone yet to tee off (in honour order), then whoever is farthest from the pin.
+const isDrill = () => game.format === 'range' || game.format === 'putting';
+
+// A spot on the green, 4 to 15 yards from the hole.
+function randomPutt() {
+  const pin = pinOf();
+  for (let i = 0; i < 400; i++) {
+    const a = game.rng() * Math.PI * 2, d = 4 + game.rng() * 11;
+    const x = pin.x + Math.sin(a) * d, y = pin.y + Math.cos(a) * d;
+    if (lieAt(game.world, x, y) === 'green' && lieAt(game.world, x + 1, y) === 'green' && lieAt(game.world, x, y + 1) === 'green') return { x, y };
+  }
+  return { x: pin.x, y: pin.y - 5 };
+}
+
+// The range's yardage flags along the hole, every 50 yards from the tee.
+function rangeFlags() {
+  if (game.format !== 'range') return [];
+  if (game.rangeFlags?.hole === game.hole) return game.rangeFlags.list;
+  const h = game.hole, t0 = h.tees[game.tee], list = [];
+  for (let d = 50; t0 + d < h.length - 20; d += 50) list.push({ d, ...pointAt(h.line, t0 + d) });
+  game.rangeFlags = { hole: h, list };
+  return list;
+}
+
+// Range and putting green: report the shot, then a fresh ball.
+function drillShotOver() {
+  const p = game.players[game.cur];
+  const fl = game.flight, res = fl.res;
+  let title, sub = '', color = '#f4f0e0';
+  game.stats.balls++;
+  if (game.format === 'putting') {
+    const pin = pinOf();
+    const ft = Math.round(distTo(fl.from, pin) * 3);
+    if (res.result === 'holed') { game.stats.made++; title = 'HOLED!'; color = '#ffd84a'; sfx('cup'); }
+    else {
+      const left = distTo(res.end, pin);
+      const past = (res.end.x - fl.from.x) * (pin.x - fl.from.x) + (res.end.y - fl.from.y) * (pin.y - fl.from.y) > distTo(fl.from, pin) ** 2;
+      title = 'MISSED'; sub = `${Math.max(1, Math.round(left * 3))} FT ${past ? 'PAST' : 'SHORT'}`; color = '#ff7a6a';
+    }
+    sub = `${ft} FT PUTT${sub ? `, ${sub}` : ''}`;
+    game.nextBall = randomPutt();
+  } else {
+    const from = fl.from, end = res.end;
+    const total = Math.round(distTo(from, end)), carry = Math.round(res.carry ?? total);
+    const yaw = fl.yaw ?? game.aimYaw;
+    const side = (end.x - from.x) * Math.cos(yaw) - (end.y - from.y) * Math.sin(yaw);
+    const off = Math.round(Math.abs(side));
+    if (res.result === 'water' || res.result === 'oob') { title = res.result === 'water' ? 'IN THE WATER' : 'OUT OF BOUNDS'; color = '#ff7a6a'; sfx(res.result === 'water' ? 'splash' : 'sad'); }
+    else title = res.hitTree ? 'HIT A TREE!' : `${CLUBS[game.keep?.club ?? game.club].name} ${total} YDS`;
+    sub = `CARRY ${carry}  TOTAL ${total}  ${off ? `${off} ${side > 0 ? 'RIGHT' : 'LEFT'}` : 'STRAIGHT'}`;
+    if (res.result === 'rest') game.stats.longest = Math.max(game.stats.longest, total);
+    game.nextBall = { ...from };
+  }
+  game.banner = { title, sub, t: 2.4, color };
+  game.phase = 'result';
+  game.resultT = 2.4;
+}
+
 // Practice: take the last shot again.
 function mulligan() {
   const m = game.lastShot;
-  if (game.format !== 'practice' || !m || game.phase !== 'aim') return;
+  if ((game.format !== 'practice' && game.format !== 'putting') || !m || game.phase !== 'aim') return;
   const p = game.players[m.pi];
   p.ball = { ...m.ball }; p.strokes = m.strokes; p.holed = false; p.pickedUp = false;
   game.lastShot = null;
@@ -2497,6 +2569,7 @@ function setupShot() {
   game.puttRange = PUTT_RANGES.findIndex((r) => r >= d * 1.25);
   if (game.puttRange < 0) game.puttRange = PUTT_RANGES.length - 1;
   game.aimYaw = autoAim(p.ball, club);
+  if (game.format === 'range' && game.keep) { game.club = game.keep.club; game.aimYaw = game.keep.yaw; }
   game.swing = null;
   game.shotCam = shotCamera(p.ball, game.aimYaw);
 }
@@ -2625,6 +2698,7 @@ function launch() {
   const eff = snapEffect(s.snap, s.power);
   const from = { ...p.ball };
   game.lastShot = { pi: game.cur, ball: from, strokes: p.strokes };
+  if (game.format === 'range') game.keep = { club: game.club, yaw: game.aimYaw };
   let res;
   if (game.club === PUTTER) {
     res = playPutt(game.world, from, { yaw: game.aimYaw, distance: PUTT_RANGES[game.puttRange] * Math.min(1.1, s.power), snap: { push: (game.rng() - 0.5) * 0.006 * game.setup.difficulty, tilt: 0 }, rng: game.rng });
@@ -2636,7 +2710,7 @@ function launch() {
     });
     sfx('hit');
   }
-  game.flight = { res, from, i: 0, t: 0, eff, power: s.power, done: false, sounds: { tree: false, land: false } };
+  game.flight = { res, from, yaw: game.aimYaw, i: 0, t: 0, eff, power: s.power, done: false, sounds: { tree: false, land: false } };
   game.phase = 'flight';
 }
 
@@ -2694,6 +2768,7 @@ function followBall(dt, k) {
 const SCORE_NAMES = { '-4': 'CONDOR!', '-3': 'ALBATROSS!', '-2': 'EAGLE!', '-1': 'BIRDIE!', 0: 'PAR', 1: 'BOGEY', 2: 'DOUBLE BOGEY', 3: 'TRIPLE BOGEY' };
 
 function shotOver() {
+  if (isDrill()) return drillShotOver();
   const p = game.players[game.cur];
   const fl = game.flight;
   const res = fl.res;
@@ -2773,6 +2848,8 @@ function matchText(up, left, final) {
 // The column on the right of the panel and the card for each player.
 function standing(p, i) {
   switch (game.format) {
+    case 'range': return { text: game.stats.longest ? `${game.stats.longest}Y` : '-', color: C.gold };
+    case 'putting': return { text: `${game.stats.made}/${game.stats.balls}`, color: C.gold };
     case 'stableford': return { text: `${p.scores.reduce((t, s, k) => t + stablefordPoints(s, parFor(k)), 0)}PT`, color: C.gold };
     case 'skins': { const n = game.skins.winners.filter((w) => w && w.who === i).reduce((t, w) => t + w.skins, 0); return { text: `${n}SK`, color: n ? C.gold : C.text }; }
     case 'match': { const { up } = matchStatus(); const me = i === 0 ? up : -up; return { text: me === 0 ? 'AS' : me > 0 ? `${me}UP` : `${-me}DN`, color: me > 0 ? C.red : me < 0 ? C.cyan : C.text }; }
@@ -2901,6 +2978,8 @@ function drawScene() {
   if (cup) fillEllipse(view, cup.x, cup.y, Math.max(1, (CUP_R * cam.f) / cup.t), Math.max(0.6, (CUP_R * cam.f) / cup.t * 0.4), 0xff101410, cup.t);
   // The flag (lifted out while a putt is close).
   drawSprite(view, cam, game.art.sprites.flag, pin.x, pin.y, gp, 2.6, false, w.look.haze);
+  // Range yardage flags.
+  for (const f of rangeFlags()) drawSprite(view, cam, game.art.sprites.flag, f.x, f.y, groundAt(w, f.x, f.y), 3.5, false, w.look.haze);
   // Other balls at rest.
   game.players.forEach((q, i) => {
     if (q.holed) return;
@@ -2931,6 +3010,18 @@ function drawScene() {
     if (!(game.phase === 'result' && fl.res.result !== 'rest')) drawBall(view, cam, q.x, q.y, q.z, groundAt(w, q.x, q.y));
   }
   ctx.putImageData(view.img, 0, 0);
+  // Yardages over the range flags, where the flag top can be seen.
+  // Nearest first; a farther label is skipped if it would sit on top of a nearer one.
+  const placed = [];
+  for (const f of rangeFlags()) {
+    const sp = project3(cam, VW, f.x, f.y, groundAt(w, f.x, f.y) + 3.4);
+    if (!sp || sp.x < 6 || sp.x >= VW - 6 || sp.y < 4 || sp.y >= VH) continue;
+    if (view.depth[Math.floor(sp.y) * VW + Math.floor(sp.x)] < sp.t - 0.5) continue;
+    const lx = Math.round(sp.x), ly = Math.round(sp.y) - 7;
+    if (placed.some((q) => Math.abs(q.x - lx) < 14 && Math.abs(q.y - ly) < 7)) continue;
+    placed.push({ x: lx, y: ly });
+    smallText(ctx, `${f.d}`, lx, ly, '#ffffff', { align: 'center', shadow: '#10121c' });
+  }
   // The golfer.
   if ((game.phase === 'aim' || game.phase === 'swing') && game.cur >= 0) drawGolfer(p, p.ball);
   else if ((game.phase === 'flight' || game.phase === 'result') && game.flight && !game.flight.following) drawGolfer(p, game.flight.from);
@@ -3209,6 +3300,8 @@ function drawHints() {
   if (!game.hints || game.phase !== 'aim') return;
   const lines = ['LEFT/RIGHT OR DRAG: AIM', 'UP/DOWN OR WHEEL: CLUB', 'HOLD SPACE OR MOUSE FOR POWER,', 'LET GO, THEN PRESS ON THE SNAP', 'TAB: CARD  M: SOUND  C: BALL CAM'];
   if (game.format === 'practice') lines.push('U: MULLIGAN');
+  if (game.format === 'range') lines.push('N: NEXT HOLE');
+  if (game.format === 'putting') lines.push('U: SAME PUTT AGAIN  N: NEXT GREEN');
   ctx.fillStyle = 'rgba(14,16,28,0.7)';
   ctx.fillRect(4, VH - 8 - lines.length * 8, 128, lines.length * 8 + 4);
   lines.forEach((l, i) => smallText(ctx, l, 8, VH - 6 - (lines.length - i) * 8 + 2, C.text));
@@ -3341,7 +3434,7 @@ function setupRows() {
     rows.push({ key: 'seed', label: 'SEED', value: `${st.seed}`, note: `${randomCourseName(STYLE_KEYS[st.style], st.seed)}  (R: NEW SEED)` });
   }
   if (FORMATS[st.format].key === 'practice') rows.push({ key: 'practiceHole', label: 'HOLE', value: `${st.practiceHole + 1}` });
-  else rows.push({ key: 'holes', label: 'ROUND', value: HOLE_SETS[st.holes].name });
+  else if (!['range', 'putting'].includes(FORMATS[st.format].key)) rows.push({ key: 'holes', label: 'ROUND', value: HOLE_SETS[st.holes].name });
   rows.push({ key: 'tee', label: 'TEES', value: TEES[st.tee].name });
   rows.push({ key: 'start', label: '', value: 'TEE OFF!' });
   return rows;
@@ -3477,7 +3570,12 @@ window.addEventListener('keydown', (e) => {
   if (k === 'Escape') { game.mode = 'title'; return; }
   if (game.cardWait) { if (k === ' ' || k === 'Enter') continueAfterCard(); if ((k === 'n' || k === 'N') && game.format === 'practice') continueAfterCard(true); return; }
   if (k === 'u' || k === 'U') mulligan();
-  if (k === 'Tab') { game.showCard = !game.showCard; return; }
+  if (isDrill() && (k === 'n' || k === 'N') && game.phase === 'aim') {
+    game.holeList = [(game.holeList[0] + 1) % game.course.holes.length];
+    game.keep = null; game.cam = null; sfx('blip');
+    return loadHole();
+  }
+  if (k === 'Tab') { if (!isDrill()) game.showCard = !game.showCard; return; }
   if (k === ' ' || k === 'Enter') swingDown();
   if (k === 'ArrowUp' || k === 'w' || k === 'W') clubBy(-1);
   if (k === 'ArrowDown' || k === 's' || k === 'S') clubBy(1);
@@ -3606,7 +3704,11 @@ function step(dt) {
   if (game.phase === 'result') {
     if (game.flight && !game.flight.done) updateFlight(dt);
     game.resultT -= dt;
-    if (game.resultT <= 0) { game.flight = null; nextTurn(); }
+    if (game.resultT <= 0) {
+      game.flight = null;
+      if (game.nextBall) { game.players[game.cur].ball = game.nextBall; game.nextBall = null; }
+      nextTurn();
+    }
   }
   if (game.phase === 'fly') updateFly(dt);
   if (game.phase === 'flight' && game.flight.done) {}

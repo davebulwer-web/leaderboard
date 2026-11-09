@@ -19,6 +19,8 @@ Game types:
 - **Skins** (2 to 4 players): the outright best score takes the hole's skin; a tie carries it over to the next hole.
 - **Stableford:** points for each hole (double bogey or worse 0, bogey 1, par 2, birdie 3, eagle 4). You pick up once you can't score.
 - **Practice hole:** pick any hole and play it as often as you like. `U` takes your last shot again (a mulligan), and after holing out Space plays the hole again and `N` moves to the next one.
+- **Driving range:** the flattest long hole on the course, with flags every 50 yards. Hit any club as often as you like: your club and aim stay set, and after each shot you see the carry, the total and how far left or right it finished. `N` moves to another hole.
+- **Putting green:** random putts of 12 to 45 feet on each green, with made/attempted in the panel. `U` tries the same putt again and `N` moves to the next green.
 
 - **Aim:** left/right arrows (hold Shift for fine aim), or drag sideways on the view. The view turns with your aim, and the yellow marker shows where a full shot with that club carries on flat, calm ground.
 - **Club:** up/down arrows or the mouse wheel. A club is picked for you each shot, and the panel shows how far it carries from your lie on flat, calm ground. While you swing, the meter shows the power and the yards that power gives. On the green, up/down changes the putter's range (9 to 108 feet).
