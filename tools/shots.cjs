@@ -18,14 +18,16 @@ const out = process.argv[2] || 'screenshots';
   await pg.keyboard.press('Enter');
   await pg.waitForTimeout(4000);
   await pg.screenshot({ path: `${out}/03-tee.png` });
-  // Swing: start, power at ~95%, snap.
-  await pg.keyboard.press('Space');
-  await pg.waitForTimeout(600);
+  // Swing: hold for power, let go, press on the snap.
+  await pg.keyboard.down(' ');
+  await pg.waitForTimeout(700);
   await pg.screenshot({ path: `${out}/04-backswing.png` });
-  await pg.waitForTimeout(400);
-  await pg.keyboard.press('Space');
-  await pg.waitForTimeout(390);
-  await pg.keyboard.press('Space');
+  await pg.waitForTimeout(300);
+  await pg.keyboard.up(' ');
+  await pg.waitForTimeout(150);
+  await pg.screenshot({ path: `${out}/04b-snap.png` });
+  await pg.waitForTimeout(260);
+  await pg.keyboard.press(' ');
   await pg.waitForTimeout(1500);
   await pg.screenshot({ path: `${out}/05-flight.png` });
   await pg.waitForTimeout(6000);

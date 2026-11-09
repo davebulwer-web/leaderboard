@@ -40,7 +40,7 @@ const DIFFICULTY = [
   { name: 'AMATEUR', tol: 0.035, wind: 1, rise: 1.1, note: 'WIND, FAIR SNAP' },
   { name: 'PRO', tol: 0.018, wind: 1.25, rise: 0.92, note: 'STRONG WIND, TIGHT SNAP' },
 ];
-const SNAP_LINE = 0.1;
+const SNAP_LINE = -0.14, SNAP_BOTTOM = -0.3; // the snap section sits below the power scale
 const TEES = [
   { key: 'yellow', name: 'FORWARD' }, { key: 'white', name: 'WHITE' }, { key: 'blue', name: 'BLUE' }, { key: 'black', name: 'CHAMPIONSHIP' },
 ];
@@ -194,12 +194,18 @@ function autoAim(ball, club) {
   return Math.atan2(target.x - ball.x, target.y - ball.y);
 }
 
+// The same camera for every shot, putts included, so the golfer and the course
+// always share one perspective. It sits far enough back that the golfer, who
+// stands level with the ball, draws at the art's own pixel size.
+const GOLFER_YARDS = 1.85;
+const CAM_F = 230, CAM_EYE = 2.6, CAM_HORIZON = 108;
 function shotCamera(ball, yaw) {
-  const putt = game.putting;
-  const D = putt ? 2.3 : 3.0, E = putt ? 1.3 : 1.75;
-  const cx = ball.x - Math.sin(yaw) * D, cy = ball.y - Math.cos(yaw) * D;
+  const D = (GOLFER_YARDS * CAM_F) / game.art.golferPx;
+  // Stand a little to the right of the line so the golfer doesn't hide the target.
+  const SIDE = 0.75;
+  const cx = ball.x - Math.sin(yaw) * D + Math.cos(yaw) * SIDE, cy = ball.y - Math.cos(yaw) * D - Math.sin(yaw) * SIDE;
   const gb = groundAt(game.world, ball.x, ball.y), gc = groundAt(game.world, cx, cy);
-  return { x: cx, y: cy, eye: Math.max(gb + E, gc + 0.9), yaw, horizon: putt ? 58 : 92, f: 230, ball: { ...ball } };
+  return { x: cx, y: cy, eye: Math.max(gb + CAM_EYE, gc + 1.2), yaw, horizon: CAM_HORIZON, f: CAM_F, ball: { ...ball } };
 }
 
 // ---------- Camera moves ----------
@@ -231,19 +237,28 @@ function updateFly(dt) {
 }
 
 // ---------- The swing ----------
+// Hold the button and the power climbs; let go to set it. The marker then drops
+// down the meter into the snap section: press again as it crosses the snap line.
+// Putts are power only: let go and the ball's away.
 
-function pressSwing() {
+function swingDown() {
   if (game.mode !== 'play') return;
   if (game.phase === 'aim') {
-    game.swing = { stage: 1, level: 0, power: 0, snap: 0, t: 0 };
+    game.swing = { stage: 1, level: 0, power: 0, snap: SNAP_LINE, t: 0 };
     game.phase = 'swing';
     game.hints = false;
     return;
   }
-  if (game.phase !== 'swing') return;
+  if (game.phase === 'swing' && game.swing.stage === 2) { game.swing.snap = game.swing.level; strike(); }
+}
+
+function swingUp() {
+  if (game.mode !== 'play' || game.phase !== 'swing') return;
   const s = game.swing;
-  if (s.stage === 1) { s.power = s.level; s.stage = 2; sfx('blip'); }
-  else if (s.stage === 2) { s.snap = s.level; strike(); }
+  if (s.stage !== 1) return;
+  s.power = s.level;
+  if (game.club === PUTTER) { s.snap = SNAP_LINE; strike(); }
+  else s.stage = 2;
 }
 
 function updateSwing(dt) {
@@ -251,14 +266,14 @@ function updateSwing(dt) {
   if (!s) return;
   s.t += dt;
   if (s.stage === 1) {
-    s.level += dt / game.diff.rise;
-    if (s.level >= 1.1) { s.level = 1.1; s.power = 1.1; s.stage = 2; }
+    s.level += dt / game.diff.rise / (game.club === PUTTER ? 1.25 : 1);
+    if (s.level >= 1.1) { s.level = 1.1; swingUp(); }
   } else if (s.stage === 2) {
-    s.level -= dt * 2.1;
-    if (s.level <= -0.06) { s.level = -0.06; s.snap = -0.06; strike(); }
+    s.level -= dt * 2.4;
+    if (s.level <= SNAP_BOTTOM) { s.level = SNAP_BOTTOM; s.snap = SNAP_BOTTOM; strike(); }
   } else if (s.stage === 3) {
     s.anim += dt;
-    if (s.anim >= 0.09 && !s.launched) { s.launched = true; launch(); }
+    if (s.anim >= (game.club === PUTTER ? 0.1 : 0.09) && !s.launched) { s.launched = true; launch(); }
   }
 }
 
@@ -285,7 +300,7 @@ function launch() {
   const from = { ...p.ball };
   let res;
   if (game.club === PUTTER) {
-    res = playPutt(game.world, from, { yaw: game.aimYaw, distance: PUTT_RANGES[game.puttRange] * Math.min(1.1, s.power), snap: { push: -eff * 0.02, tilt: 0 }, rng: game.rng });
+    res = playPutt(game.world, from, { yaw: game.aimYaw, distance: PUTT_RANGES[game.puttRange] * Math.min(1.1, s.power), snap: { push: (game.rng() - 0.5) * 0.006 * game.setup.difficulty, tilt: 0 }, rng: game.rng });
     sfx('putt');
   } else {
     res = playShot(game.world, from, {
@@ -427,7 +442,7 @@ function drawScene() {
   const p = game.players[game.cur];
   if (game.dirty) {
     const clearAt = game.phase === 'fly' ? game.fly.to.ball : p.ball;
-    renderScene(view, w, cam, { backdrop: game.backdrop, sprites: game.art.sprites }, { grid: game.putting && game.phase !== 'fly', clear: { x: clearAt.x, y: clearAt.y, r: 4.5 } });
+    renderScene(view, w, cam, { backdrop: game.backdrop, sprites: game.art.sprites }, { clear: { x: clearAt.x, y: clearAt.y, r: 6.5 } });
     game.dirty = false;
   }
   restoreScene(view);
@@ -469,19 +484,38 @@ function drawScene() {
   }
   ctx.putImageData(view.img, 0, 0);
   // The golfer.
-  if ((game.phase === 'aim' || game.phase === 'swing' || game.phase === 'flight' || game.phase === 'result') && game.cur >= 0) {
-    drawGolfer(p);
-  }
+  if ((game.phase === 'aim' || game.phase === 'swing') && game.cur >= 0) drawGolfer(p, p.ball);
+  else if ((game.phase === 'flight' || game.phase === 'result') && game.flight) drawGolfer(p, game.flight.from);
 }
 
 function drawAimMarker() {
   const cam = game.cam, w = game.world;
   const p = game.players[game.cur];
+  const putt = game.club === PUTTER;
   let d;
-  if (game.club === PUTTER) d = Math.min(distTo(p.ball, pinOf()), PUTT_RANGES[game.puttRange]);
+  if (putt) d = Math.max(0.5, Math.min(distTo(p.ball, pinOf()), PUTT_RANGES[game.puttRange]));
   else d = CLUBS[game.club].carry * lieFactor(p.lie, p.ball.x, p.ball.y);
   const ax = p.ball.x + Math.sin(game.aimYaw) * d, ay = p.ball.y + Math.cos(game.aimYaw) * d;
   const az = groundAt(w, ax, ay);
+  if (putt) {
+    // A little post; its shadow falls the way the green runs, longer where it's steeper.
+    const sl = groundSlope(w, ax, ay, 0.7);
+    const k = 45; // yards of shadow per unit of slope
+    const sx = ax - sl.x * k, sy = ay - sl.y * k;
+    const steps = 12;
+    for (let i = 0; i <= steps; i++) {
+      const u = i / steps;
+      const q = project3(cam, VW, ax + (sx - ax) * u, ay + (sy - ay) * u, groundAt(w, ax + (sx - ax) * u, ay + (sy - ay) * u));
+      if (q) fillEllipse(view, q.x, q.y, Math.max(1, (0.05 * cam.f) / q.t), Math.max(0.8, (0.03 * cam.f) / q.t), 0xff000000, q.t, 0.5);
+    }
+    const base = project3(cam, VW, ax, ay, az), tip = project3(cam, VW, ax, ay, az + 0.35);
+    if (base && tip) {
+      const r = Math.max(1, (0.025 * cam.f) / base.t);
+      for (let y = Math.floor(tip.y); y <= base.y; y++) fillEllipse(view, base.x, y, r, 0.6, 0xff40e8ff, base.t - 0.05);
+      fillEllipse(view, tip.x, tip.y, r * 1.8, r * 1.8, 0xff3a3aff, base.t - 0.06);
+    }
+    return;
+  }
   const sp = project3(cam, VW, ax, ay, az);
   if (!sp) return;
   const r = Math.max(2, Math.min(10, (1.6 * cam.f) / sp.t));
@@ -497,48 +531,36 @@ function drawAimMarker() {
     const y2 = Math.round(sp.y + k), x2 = Math.round(sp.x);
     if (x2 >= 0 && x2 < VW && y2 >= 0 && y2 < VH) view.px[y2 * VW + x2] = col;
   }
-  // On the green, novices get a dotted line to aim along.
-  if (game.club === PUTTER && game.setup.difficulty === 0) {
-    for (let s = 0.4; s < d; s += 0.35) {
-      const x = p.ball.x + Math.sin(game.aimYaw) * s, y = p.ball.y + Math.cos(game.aimYaw) * s;
-      const q = project3(cam, VW, x, y, groundAt(w, x, y));
-      if (q && q.x >= 0 && q.x < VW && q.y >= 0 && q.y < VH) fillEllipse(view, q.x, q.y, 0.8, 0.8, 0xffffffff, q.t - 0.02);
-    }
-  }
 }
 
 function golferFrame() {
   const s = game.swing;
-  const putt = game.club === PUTTER;
-  if (putt) {
+  const t = s && s.stage === 3 ? s.anim + (game.flight ? game.flight.t : 0) : 0;
+  if (game.club === PUTTER) {
+    // Back with the power, then through.
     const seq = game.art.putt;
     if (!s || game.phase === 'aim') return seq[0];
-    if (s.stage === 1 || s.stage === 2) return seq[Math.min(seq.length - 1, Math.round((s.stage === 1 ? s.level : s.power) * 4))];
-    const back = Math.round(s.power * 4);
-    const k = Math.max(0, back - Math.floor((s.anim + (game.phase !== 'swing' ? 1 : 0)) * 40));
-    return seq[Math.min(seq.length - 1, k)];
+    if (s.stage === 1) return seq[Math.min(3, Math.round(s.level * 3.4))];
+    return seq[Math.min(seq.length - 1, 4 + Math.floor(t / 0.08))];
   }
   const seq = game.art.swing;
   if (!s || game.phase === 'aim') return seq[0];
-  if (s.stage === 1) return seq[Math.min(8, Math.round(s.level * 7.3))];
-  if (s.stage === 2) return seq[Math.min(8, Math.round(s.power * 7.3))];
+  if (s.stage === 1) return seq[Math.min(8, Math.round(4 + s.level * 4))];
+  if (s.stage === 2) return seq[8];
   // Down and through.
-  const t = s.anim + (game.flight ? game.flight.t : 0);
   return seq[Math.min(seq.length - 1, 9 + Math.floor(t / 0.07))];
 }
 
-function drawGolfer(p) {
+// The golfer stands side on, level with the ball, scaled to the world like everything else.
+function drawGolfer(p, at) {
   const cam = game.cam;
   const w = game.world;
-  const b = project3(cam, VW, p.ball.x, p.ball.y, groundAt(w, p.ball.x, p.ball.y));
-  const frames = game.art.golferFor(p.shirt);
-  const key = golferFrame();
-  const im = frames[key];
+  const b = project3(cam, VW, at.x, at.y, groundAt(w, at.x, at.y));
+  const im = game.art.golferFor(p.shirt)[golferFrame()];
   if (!b || !im) return;
+  const scale = (GOLFER_YARDS * cam.f) / b.t / game.art.golferPx;
   const [bx, by] = game.art.ball;
-  // The clubhead sits just behind the ball.
-  const x = Math.round(b.x - bx + 2), y = Math.round(b.y - by + 2);
-  ctx.drawImage(im, x, y);
+  ctx.drawImage(im, Math.round(b.x - bx * scale), Math.round(b.y - by * scale), Math.round(im.width * scale), Math.round(im.height * scale));
 }
 
 // ---------- HUD panel ----------
@@ -630,7 +652,7 @@ function drawPanel() {
     y += 9;
   }
   drawWind(X + 26, y + 15);
-  drawMeter(X + 58, SH - 70);
+  drawMeter(X + 58, SH - 76);
 }
 
 function drawWind(cx, cy) {
@@ -653,49 +675,62 @@ function drawWind(cx, cy) {
   ctx.fill();
 }
 
-// The power and snap meter: a bar that fills as you swing back, then falls to the snap line.
+// The meter, Leaderboard fashion: a tall bar with a POWER section and, below
+// it, a SNAP section. The power climbs while the button is held; once let go,
+// the marker drops down into the snap section towards the snap line.
 function drawMeter(x, y) {
-  const H = 62, W = 10, top = y, bottom = y + H;
-  const lv = (v) => bottom - (v / 1.1) * H;
+  const putt = game.club === PUTTER;
+  const lo = putt ? 0 : SNAP_BOTTOM, hi = 1.1;
+  const H = 70, W = 10, top = y, bottom = y + H;
+  const lv = (v) => Math.round(bottom - ((v - lo) / (hi - lo)) * H);
   ctx.fillStyle = '#0c0e18'; ctx.fillRect(x - 2, top - 2, W + 4, H + 4);
-  ctx.fillStyle = '#2a2f4a'; ctx.fillRect(x, top, W, H);
-  ctx.fillStyle = '#5a2430'; ctx.fillRect(x, top, W, lv(1) - top);
-  for (let k = 1; k <= 10; k++) { ctx.fillStyle = k === 10 ? '#f4f0e0' : '#4a5078'; ctx.fillRect(x - 3, Math.round(lv(k / 10)), k % 5 ? 3 : 5, 1); }
-  // Snap zone.
-  const tol = game.diff ? game.diff.tol : 0.035;
-  ctx.fillStyle = '#2f8a46';
-  ctx.fillRect(x, Math.round(lv(SNAP_LINE + tol)), W, Math.max(1, Math.round(lv(SNAP_LINE - tol) - lv(SNAP_LINE + tol))));
-  ctx.fillStyle = '#7ee07a'; ctx.fillRect(x - 2, Math.round(lv(SNAP_LINE)), W + 4, 1);
+  ctx.fillStyle = '#9aa0b8'; ctx.fillRect(x, top, W, H);
+  ctx.fillStyle = '#6a7090'; ctx.fillRect(x + W - 3, top, 3, H);
+  // Ticks every 10%, a longer one at full power.
+  for (let k = 0; k <= 11; k++) { ctx.fillStyle = k === 10 ? '#ffffff' : '#3a4060'; ctx.fillRect(x - 4, lv(k / 10), k % 5 ? 4 : 6, 1); }
+  ctx.fillStyle = '#c84a40'; ctx.fillRect(x, top, W, lv(1) - top);
+  const bracket = (v0, v1, label, col) => {
+    const a = lv(v1), b = lv(v0);
+    ctx.fillStyle = col;
+    ctx.fillRect(x + W + 4, a, 1, b - a); ctx.fillRect(x + W + 4, a, 3, 1); ctx.fillRect(x + W + 4, b - 1, 3, 1);
+    smallText(ctx, label, x + W + 9, Math.round((a + b) / 2) - 2, col);
+  };
+  bracket(0, hi, putt ? 'PUTT' : 'POWER', C.gold);
+  if (!putt) {
+    ctx.fillStyle = '#5a6080'; ctx.fillRect(x, lv(0), W, 1);
+    const tol = game.diff ? game.diff.tol : 0.035;
+    ctx.fillStyle = '#4caf5a';
+    ctx.fillRect(x, lv(SNAP_LINE + tol), W, Math.max(1, lv(SNAP_LINE - tol) - lv(SNAP_LINE + tol)));
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 2, lv(SNAP_LINE), W + 4, 1);
+    bracket(SNAP_BOTTOM, 0, 'SNAP', C.green);
+  }
   const s = game.swing;
   if (s) {
-    if (s.stage === 1) {
-      ctx.fillStyle = s.level > 1 ? '#ff6a5a' : '#ffd84a';
-      ctx.fillRect(x + 1, Math.round(lv(s.level)), W - 2, bottom - Math.round(lv(s.level)));
-    } else {
-      ctx.fillStyle = s.power > 1 ? '#c85048' : '#a88a2a';
-      ctx.fillRect(x + 1, Math.round(lv(s.power)), W - 2, bottom - Math.round(lv(s.power)));
-      const mk = s.stage === 2 ? s.level : s.snap;
+    const pw = Math.min(hi, s.stage === 1 ? s.level : s.power);
+    ctx.fillStyle = s.stage === 1 ? (pw > 1 ? '#ff6a5a' : '#ffd84a') : '#b89a3a';
+    ctx.fillRect(x + 1, lv(pw), W - 2, lv(0) - lv(pw));
+    if (s.stage >= 2 && !putt) {
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(x - 3, Math.round(lv(Math.max(-0.05, mk))), W + 6, 2);
+      ctx.fillRect(x - 3, lv(s.stage === 2 ? s.level : s.snap) - 1, W + 6, 2);
     }
   }
-  // Putts: where the hole is on the bar, as if the green were flat.
-  if (game.club === PUTTER && game.cur >= 0) {
+  // Novices get a tick for the hole's distance on a flat green.
+  if (putt && game.cur >= 0 && game.setup.difficulty === 0) {
     const d = distTo(game.players[game.cur].ball, pinOf()) / PUTT_RANGES[game.puttRange];
-    if (d <= 1.1) { ctx.fillStyle = '#ff3a3a'; ctx.fillRect(x + W + 1, Math.round(lv(d)) - 1, 4, 3); }
+    if (d <= 1.1) { ctx.fillStyle = '#ff3a3a'; ctx.fillRect(x - 5, lv(d) - 1, 4, 3); }
   }
-  smallText(ctx, 'POWER', x + W + 8, top + 2, C.text);
-  const pw = s ? Math.round((s.stage === 1 ? s.level : s.power) * 100) : null;
-  if (pw != null) smallText(ctx, `${pw}%`, x + W + 8, top + 10, pw > 100 ? C.red : C.gold);
-  smallText(ctx, 'SNAP', x + W + 8, Math.round(lv(SNAP_LINE)) - 2, C.green);
-  if (s && s.stage === 3) {
+  const tx = x - 54;
+  if (s && s.stage >= 1) {
+    const pw = Math.round((s.stage === 1 ? s.level : s.power) * 100);
+    smallText(ctx, putt ? `${Math.round(PUTT_RANGES[game.puttRange] * 3 * (pw / 100))} FT` : `${pw}%`, tx, top + 2, pw > 100 ? C.red : C.gold);
+  }
+  if (s && s.stage === 3 && !putt) {
     const e = snapEffect(s.snap, 1);
     const txt = Math.abs(e) < 0.01 ? 'PURE' : e > 0 ? (e > 0.6 ? 'HOOK' : 'DRAW') : (e < -0.6 ? 'SLICE' : 'FADE');
-    if (game.club !== PUTTER || Math.abs(e) >= 0.01) smallText(ctx, txt, x + W + 8, Math.round(lv(SNAP_LINE)) + 6, C.cyan);
+    smallText(ctx, txt, tx, top + 10, C.cyan);
   }
-  smallText(ctx, game.club === PUTTER ? 'STROKE' : 'SWING', x - 50, top + 2, C.dim);
-  smallText(ctx, 'SPACE', x - 50, top + 10, C.dim);
-  smallText(ctx, 'OR CLICK', x - 50, top + 17, C.dim);
+  const help = putt ? ['HOLD SPACE', 'OR MOUSE,', 'LET GO TO', 'PUTT'] : ['HOLD FOR', 'POWER, LET', 'GO, PRESS', 'ON SNAP'];
+  help.forEach((l, i) => smallText(ctx, l, tx, top + 30 + i * 8, C.dim));
 }
 
 // ---------- Overlays ----------
@@ -717,7 +752,7 @@ function drawBanner(dt) {
 
 function drawHints() {
   if (!game.hints || game.phase !== 'aim') return;
-  const lines = ['LEFT/RIGHT OR DRAG: AIM', 'UP/DOWN OR WHEEL: CLUB', 'SPACE/CLICK: START SWING,', 'AGAIN FOR POWER, AGAIN ON SNAP', 'TAB: SCORECARD   M: SOUND'];
+  const lines = ['LEFT/RIGHT OR DRAG: AIM', 'UP/DOWN OR WHEEL: CLUB', 'HOLD SPACE OR MOUSE FOR POWER,', 'LET GO, THEN PRESS ON THE SNAP', 'TAB: SCORECARD   M: SOUND'];
   ctx.fillStyle = 'rgba(14,16,28,0.7)';
   ctx.fillRect(4, VH - 8 - lines.length * 8, 128, lines.length * 8 + 4);
   lines.forEach((l, i) => smallText(ctx, l, 8, VH - 6 - (lines.length - i) * 8 + 2, C.text));
@@ -945,11 +980,14 @@ window.addEventListener('keydown', (e) => {
   if (k === 'Escape') { game.mode = 'title'; return; }
   if (game.cardWait) { if (k === ' ' || k === 'Enter') continueAfterCard(); return; }
   if (k === 'Tab') { game.showCard = !game.showCard; return; }
-  if (k === ' ' || k === 'Enter') pressSwing();
+  if (k === ' ' || k === 'Enter') swingDown();
   if (k === 'ArrowUp' || k === 'w' || k === 'W') clubBy(-1);
   if (k === 'ArrowDown' || k === 's' || k === 'S') clubBy(1);
 });
-window.addEventListener('keyup', (e) => game.keysDown.delete(e.key));
+window.addEventListener('keyup', (e) => {
+  game.keysDown.delete(e.key);
+  if ((e.key === ' ' || e.key === 'Enter') && game.mode === 'play') swingUp();
+});
 window.addEventListener('blur', () => game.keysDown.clear());
 
 function setupKey(e) {
@@ -983,7 +1021,11 @@ canvas.addEventListener('pointerdown', (e) => {
   const p = toScreen(e);
   ptr.down = true; ptr.x = p.x; ptr.y = p.y; ptr.moved = 0; ptr.swingPress = false;
   canvas.setPointerCapture(e.pointerId);
-  if (game.mode === 'play' && !game.cardWait && game.phase === 'swing') { pressSwing(); ptr.swingPress = true; }
+  // On the view: press and hold to swing (a drag instead turns the aim).
+  if (game.mode === 'play' && !game.cardWait && p.x < VW && (game.phase === 'aim' || game.phase === 'swing')) {
+    ptr.swingPress = true;
+    swingDown();
+  }
 });
 canvas.addEventListener('pointermove', (e) => {
   if (!ptr.down) return;
@@ -991,13 +1033,17 @@ canvas.addEventListener('pointermove', (e) => {
   const dx = p.x - ptr.x;
   ptr.moved += Math.abs(dx) + Math.abs(p.y - ptr.y);
   ptr.x = p.x; ptr.y = p.y;
-  if (game.mode === 'play' && game.phase === 'aim' && ptr.moved > 3 && ptr.x < VW) aimBy(dx * 0.004);
+  if (game.mode !== 'play') return;
+  // A drag right at the start of a swing is really aiming.
+  if (game.phase === 'swing' && game.swing.stage === 1 && game.swing.level < 0.2 && ptr.moved > 4) { game.phase = 'aim'; game.swing = null; ptr.swingPress = false; }
+  if (game.phase === 'aim' && ptr.moved > 4 && ptr.x < VW) aimBy(dx * 0.004);
 });
 canvas.addEventListener('pointerup', (e) => {
   if (!ptr.down) return;
   ptr.down = false;
   const p = toScreen(e);
-  if (ptr.moved > 3 || ptr.swingPress) return;
+  if (ptr.swingPress) { swingUp(); return; }
+  if (ptr.moved > 4) return;
   if (game.mode === 'title') { game.mode = 'setup'; sfx('blip'); return; }
   if (game.mode === 'final') { game.mode = 'title'; return; }
   if (game.mode === 'setup') return setupClick(p);
@@ -1008,7 +1054,6 @@ canvas.addEventListener('pointerup', (e) => {
     if (p.y > 150 && p.y < 200 && game.phase === 'aim') clubBy(1);
     return;
   }
-  if (game.phase === 'aim') pressSwing();
 });
 canvas.addEventListener('wheel', (e) => { e.preventDefault(); clubBy(e.deltaY > 0 ? 1 : -1); }, { passive: false });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());

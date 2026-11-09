@@ -1,6 +1,6 @@
 # Pin High
 
-A retro golf game played from behind the golfer, in the spirit of the mid-80s pseudo-3D golf games, with modern pixel art. The courses come from the course generator in Fairway Pixels (`davebulwer-web/golf`), so every seed and style gives a new 18 holes with hills, doglegs, bunkers, water and woods.
+A retro golf game played from behind the golfer, in the spirit of the mid-80s pseudo-3D golf games, with modern pixel art. The courses come from the course generator in Fairway Pixels (`davebulwer-web/golf`), so every seed and style gives a new 18 holes. The golfer stands side on, as in the originals, and every shot (putts too) uses the same camera, set so he draws at the art's own pixel size with hills, doglegs, bunkers, water and woods.
 
 ![Teeing off](screenshots/03-tee.png)
 
@@ -12,8 +12,8 @@ Pick 1 to 4 players (each with a name and shirt colour), a level, and a course: 
 
 - **Aim:** left/right arrows (hold Shift for fine aim), or drag sideways on the view. The view turns with your aim, and the yellow marker shows where a full shot with that club carries on flat, calm ground.
 - **Club:** up/down arrows or the mouse wheel. A club is picked for you each shot. On the green, up/down changes the putter's range (9 to 108 feet).
-- **Swing:** space or click to start the backswing, and the power bar rises. Press again to set the power (past 100% is an overswing: longer but wild). The bar then drops towards the green SNAP line: press as it crosses. Early hooks the ball left, late slices it right, so a deliberate early or late snap is how you draw or fade a shot. The green band is how forgiving the snap is at your level.
-- **Putting:** the same meter. The red tick by the bar is where the hole is on a flat green; the panel shows how far up or down the hole is, and a faint yard grid on the green shows the slopes.
+- **Swing:** hold space (or the mouse button on the view) and the power climbs up the meter; let go to set it (past 100% is an overswing: longer but wild). The marker then drops into the SNAP section at the bottom of the meter: press as it crosses the white snap line. Early hooks the ball left, late slices it right, so a deliberate early or late snap is how you draw or fade a shot. The green band is how forgiving the snap is at your level.
+- **Putting:** power only: hold and let go. The marker by the hole is a little post whose shadow falls the way the green slopes, longer where it's steeper. The panel shows how far up or down the hole is, and Novices get a tick on the meter for the hole's distance on a flat green.
 - **Wind:** the compass shows it relative to your aim. Novice has no wind.
 - `Tab` shows the scorecard, `M` turns sound off, `Esc` goes back to the title. Holding space during a shot speeds it up.
 

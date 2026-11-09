@@ -32,9 +32,9 @@ const q = process.argv[3] || 'play=1';
   await place(-ux * 150, -uy * 150, 'b-approach');
   await place(-ux * 7 + uy * 2, -uy * 7 - ux * 2, 'c-putt');
   // Putt it.
-  await pg.keyboard.press('Space'); await pg.waitForTimeout(500);
-  await pg.keyboard.press('Space'); await pg.waitForTimeout(200);
-  await pg.keyboard.press('Space'); await pg.waitForTimeout(1200);
+  await pg.keyboard.down(' '); await pg.waitForTimeout(600);
+  await pg.screenshot({ path: `${out}/c2-putt-power.png` });
+  await pg.keyboard.up(' '); await pg.waitForTimeout(1200);
   await pg.screenshot({ path: `${out}/d-putting.png` });
   await pg.waitForTimeout(5000);
   await pg.screenshot({ path: `${out}/e-after.png` });
