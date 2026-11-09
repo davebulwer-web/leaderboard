@@ -11,6 +11,7 @@ import { makeView, renderScene, restoreScene, drawSprite, drawBall, fillEllipse,
 import { CLUBS, PUTTER, MPH, CUP_R, LIE_NAMES, LIE_GRADES, GROUND, playShot, playPutt, dropFromWater, lieGrade, lieMid } from './physics.js';
 import { loadArt, SHIRTS } from './sprites.js';
 import { bigText, smallText, bigWidth } from './font.js';
+import { makeLogo } from './logo.js';
 import { sfx, toggleMute, isMuted } from './audio.js';
 
 // ---------- Screen ----------
@@ -1029,12 +1030,12 @@ function drawTitle(dt) {
     g.addColorStop(0, 'rgba(10,12,24,0)'); g.addColorStop(0.5, `rgba(10,12,24,${a})`); g.addColorStop(1, 'rgba(10,12,24,0)');
     ctx.fillStyle = g; ctx.fillRect(0, y, SW, h);
   };
-  band(14, 92, 0.55);
-  band(SH - 64, 64, 0.7);
-  bigText(ctx, 'PIN HIGH', SW / 2, 28, C.gold, { scale: 5, align: 'center', shadow: '#1a1206' });
-  bigText(ctx, 'RETRO GOLF FROM BEHIND THE BALL', SW / 2, 78, C.text, { align: 'center', shadow: '#10121c' });
-  if (Math.floor(game.t * 2) % 2 === 0) bigText(ctx, 'PRESS SPACE OR CLICK TO PLAY', SW / 2, SH - 38, '#ffffff', { align: 'center', shadow: '#10121c' });
-  smallText(ctx, 'COURSES FROM THE FAIRWAY PIXELS GENERATOR. ART MADE WITH PIXELLAB.', SW / 2, SH - 14, C.dim, { align: 'center' });
+  band(SH - 56, 56, 0.6);
+  game.logo ??= makeLogo();
+  const L = game.logo, k = 3;
+  ctx.drawImage(L, 22, 4, L.width * k, L.height * k); // top left, clear of the golfers in the pictures
+  if (Math.floor(game.t * 2) % 2 === 0) bigText(ctx, 'PRESS SPACE OR CLICK TO PLAY', SW / 2, SH - 34, '#ffffff', { align: 'center', shadow: '#10121c' });
+  smallText(ctx, 'ART MADE WITH PIXELLAB', SW - 6, SH - 9, C.dim, { align: 'right', shadow: '#10121c' });
 }
 
 function setupRows() {
