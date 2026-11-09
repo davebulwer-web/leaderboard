@@ -1437,7 +1437,7 @@ function step(dt) {
 
 loadArt().then((art) => {
   game.art = art;
-  window.pinHigh = { game, loadHole, setupShot, shotCamera, nextTurn, startRound, holeFinished, continueAfterCard, mulligan };
+  window.pinHigh = { game, loadHole, dropFromWater, setupShot, shotCamera, nextTurn, startRound, holeFinished, continueAfterCard, mulligan };
   setupShowcase();
   game.mode = 'title';
   const q = new URLSearchParams(location.search);

@@ -290,13 +290,33 @@ export function playPutt(world, from, { yaw, distance, snap, rng }) {
 export function dropFromWater(world, path, from) {
   let k = path.length - 1;
   while (k > 0 && lieAt(world, path[k].x, path[k].y) === 'water') k--;
-  // Step back a little further so the drop isn't on the edge.
   const p = path[k];
-  const dx = from.x - p.x, dy = from.y - p.y, d = Math.hypot(dx, dy) || 1;
-  for (let back = 2; back < 40; back += 1) {
-    const q = { x: p.x + (dx / d) * back, y: p.y + (dy / d) * back };
+  // Somewhere the golfer can stand: dry, playable ground all round, so neither he
+  // nor the camera behind him ends up in the water.
+  const wet = (l) => l === 'water' || l === 'oob';
+  const clear = (q) => {
     const l = lieAt(world, q.x, q.y);
-    if (l !== 'water' && l !== 'oob' && l !== 'bunker') return q;
+    if (wet(l) || l === 'bunker' || l === 'trees') return false;
+    for (let r = 1.5; r <= 4.5; r += 1.5) {
+      for (let a = 0; a < 12; a++) {
+        if (wet(lieAt(world, q.x + Math.cos(a * 0.5236) * r, q.y + Math.sin(a * 0.5236) * r))) return false;
+      }
+    }
+    return true;
+  };
+  // Back along the line the ball came in on (keeping the water between the drop and the hole).
+  const dx = from.x - p.x, dy = from.y - p.y, d = Math.hypot(dx, dy) || 1;
+  for (let back = 2; back < Math.min(d, 120); back += 1) {
+    const q = { x: p.x + (dx / d) * back, y: p.y + (dy / d) * back };
+    if (clear(q)) return q;
+  }
+  // Otherwise the nearest clear spot to where it went in, no nearer the hole.
+  const pin = world.hole.pin, limit = Math.hypot(p.x - pin.x, p.y - pin.y);
+  for (let r = 3; r < 60; r += 1.5) {
+    for (let a = 0; a < 24; a++) {
+      const q = { x: p.x + Math.cos(a * 0.2618) * r, y: p.y + Math.sin(a * 0.2618) * r };
+      if (Math.hypot(q.x - pin.x, q.y - pin.y) >= limit && clear(q)) return q;
+    }
   }
   return { ...from };
 }

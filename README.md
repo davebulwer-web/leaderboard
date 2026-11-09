@@ -32,7 +32,7 @@ Game types:
 
 **Lies** cut the distance by a percentage, shown in red under the club: fringe 95-98%, light rough (close to the fairway or green) 82-92%, deep rough 60-75%, fairway bunker 70-85%, greenside bunker 55-70%, waste ground 80-90%, and under trees 40-60%. The club yardage uses the middle of the range; the shot itself lands somewhere inside it. The driver also loses distance off anything but a tee.
 
-Whoever is farthest from the hole plays next; the best score on a hole has the honour on the next tee. Water costs a stroke (drop back on dry land), out of bounds (past the woods at the edge of the hole) is stroke and distance, and you pick up after ten.
+Whoever is farthest from the hole plays next; the best score on a hole has the honour on the next tee. Water costs a stroke (drop back along the line the ball went in, on dry land clear of the water), out of bounds (past the woods at the edge of the hole) is stroke and distance, and you pick up after ten.
 
 Levels: **Novice** (no wind, wide snap band, slower meter, putting line), **Amateur** (wind), **Pro** (stronger wind, tight snap, faster meter).
 
