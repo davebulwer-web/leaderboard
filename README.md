@@ -2,6 +2,8 @@
 
 A retro golf game played from behind the golfer, in the spirit of the mid-80s pseudo-3D golf games, with modern pixel art. The courses come from the course generator in Fairway Pixels (`davebulwer-web/golf`), so every seed and style gives a new 18 holes. The golfer stands side on, as in the originals, and every shot (putts too) uses the same camera, set so he draws at the art's own pixel size with hills, doglegs, bunkers, water and woods.
 
+![Title screen](screenshots/00-title.png)
+
 ![Teeing off](screenshots/03-tee.png)
 
 ## Playing
@@ -49,7 +51,7 @@ Plain JavaScript and a canvas, no engine or libraries.
 
 ## Art
 
-All the art was made with [Pixellab](https://pixellab.ai): the golfer's address pose, swing and putting stroke (animated from the address pose), eleven trees, four bushes, the flag and a horizon backdrop for each course style. The swing is side on with the arms extended to the ball and the head down on it until impact: the backswing and putting stroke are posed with Pixellab's skeleton animation (`tools/skeleton-swing.py`, one skeleton per frame), and the follow-through turns into a finish seen from behind (`tools/finish-pose.py`, joined to impact with Pixellab's first-and-last-frame animation in `tools/follow-through.py`). The originals are in `assets/raw`; `tools/pl.py`, `tools/gen-scenery.sh` and `tools/gen-backdrops.sh` regenerate them (they need `PIXELLAB_API_KEY`), and `python3 tools/pack-assets.py` packs them into `src/assets.js`.
+All the art was made with [Pixellab](https://pixellab.ai): the golfer's address pose, swing and putting stroke (animated from the address pose), eleven trees, four bushes, the flag, a horizon backdrop for each course style, and the three title screen pictures (`assets/raw/title`), which crossfade behind the logo. The swing is side on with the arms extended to the ball and the head down on it until impact: the backswing and putting stroke are posed with Pixellab's skeleton animation (`tools/skeleton-swing.py`, one skeleton per frame), and the follow-through turns into a finish seen from behind (`tools/finish-pose.py`, joined to impact with Pixellab's first-and-last-frame animation in `tools/follow-through.py`). The originals are in `assets/raw`; `tools/pl.py`, `tools/gen-scenery.sh` and `tools/gen-backdrops.sh` regenerate them (they need `PIXELLAB_API_KEY`), and `python3 tools/pack-assets.py` packs them into `src/assets.js`.
 
 ![Alpine](screenshots/07-alpine-bunker.png)
 ![Desert](screenshots/08-desert-tee.png)

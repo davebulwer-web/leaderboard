@@ -79,5 +79,8 @@ js.append(f'export const GOLFER_FEET = {json.dumps(feet)};')
 js.append('export const GOLFER_PX = 94; // address pose height in pixels, about 1.85 yards')
 js.append(f'export const SPRITES = {json.dumps(sprites)};')
 js.append(f'export const BACKDROPS = {json.dumps(backdrops)};')
+# Title screen illustrations (256x144, shown at 2x), in the order they are shown.
+titles = [uri(Image.open(f'{RAW}/title/{n}.png').convert('RGB')) for n in ['t3-b', 't1-b', 't2-a']]
+js.append(f'export const TITLES = {json.dumps(titles)};')
 open('src/assets.js', 'w').write('\n'.join(js) + '\n')
 print('golfer box', box, 'ball', ball, 'size', os.path.getsize('src/assets.js') // 1024, 'KB')

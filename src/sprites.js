@@ -1,7 +1,7 @@
 // Decodes the packed Pixellab art into pixel arrays the renderer can scale, and
 // into canvases for the golfer, recoloured for each player's shirt.
 
-import { GOLFER_FRAMES, GOLFER_BALL, GOLFER_PX, SPRITES, BACKDROPS } from './assets.js';
+import { GOLFER_FRAMES, GOLFER_BALL, GOLFER_PX, SPRITES, BACKDROPS, TITLES } from './assets.js';
 
 function loadImage(src) {
   return new Promise((resolve, reject) => {
@@ -73,11 +73,13 @@ export async function loadArt() {
     const top = data[2 * c.width + 3];
     backdrops[k] = { w: c.width, h: c.height, data, sky: [top & 255, (top >> 8) & 255, (top >> 16) & 255] };
   }
+  const titles = [];
+  for (const src of TITLES) titles.push(await loadImage(src));
   const swing = Object.keys(golfer).filter((k) => k.startsWith('swing')).sort();
   const putt = Object.keys(golfer).filter((k) => k.startsWith('putt')).sort();
   const shirts = new Map();
   return {
-    golfer, sprites, backdrops, swing, putt, ball: GOLFER_BALL, golferPx: GOLFER_PX,
+    golfer, sprites, backdrops, titles, swing, putt, ball: GOLFER_BALL, golferPx: GOLFER_PX,
     // Golfer frames in a shirt colour, made on first use.
     golferFor(shirt) {
       if (!shirts.has(shirt)) {

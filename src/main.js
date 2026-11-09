@@ -1010,14 +1010,31 @@ function drawShowcase(dt) {
   ctx.putImageData(showView.img, 0, 0);
 }
 
+// The title: Pixellab illustrations at twice their size, slowly crossfading.
+const TITLE_HOLD = 9, TITLE_FADE = 1.5;
 function drawTitle(dt) {
-  drawShowcase(dt);
-  ctx.fillStyle = 'rgba(10,12,24,0.45)';
-  ctx.fillRect(0, 0, SW, SH);
-  bigText(ctx, 'PIN HIGH', SW / 2, 64, C.gold, { scale: 5, align: 'center', shadow: '#1a1206' });
-  bigText(ctx, 'RETRO GOLF FROM BEHIND THE BALL', SW / 2, 112, C.text, { align: 'center' });
-  if (Math.floor(game.t * 2) % 2 === 0) bigText(ctx, 'PRESS SPACE OR CLICK TO PLAY', SW / 2, 190, '#ffffff', { align: 'center' });
-  smallText(ctx, 'COURSES FROM THE FAIRWAY PIXELS GENERATOR. ART MADE WITH PIXELLAB.', SW / 2, SH - 12, C.dim, { align: 'center' });
+  const ims = game.art.titles;
+  const t = game.t % (ims.length * TITLE_HOLD);
+  const i = Math.floor(t / TITLE_HOLD), u = t - i * TITLE_HOLD;
+  ctx.globalAlpha = 1;
+  ctx.drawImage(ims[i], 0, 0, SW, SH);
+  if (u > TITLE_HOLD - TITLE_FADE) {
+    ctx.globalAlpha = (u - (TITLE_HOLD - TITLE_FADE)) / TITLE_FADE;
+    ctx.drawImage(ims[(i + 1) % ims.length], 0, 0, SW, SH);
+    ctx.globalAlpha = 1;
+  }
+  // A soft band behind the logo and the prompt so they read over any picture.
+  const band = (y, h, a) => {
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, 'rgba(10,12,24,0)'); g.addColorStop(0.5, `rgba(10,12,24,${a})`); g.addColorStop(1, 'rgba(10,12,24,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, y, SW, h);
+  };
+  band(14, 92, 0.55);
+  band(SH - 64, 64, 0.7);
+  bigText(ctx, 'PIN HIGH', SW / 2, 28, C.gold, { scale: 5, align: 'center', shadow: '#1a1206' });
+  bigText(ctx, 'RETRO GOLF FROM BEHIND THE BALL', SW / 2, 78, C.text, { align: 'center', shadow: '#10121c' });
+  if (Math.floor(game.t * 2) % 2 === 0) bigText(ctx, 'PRESS SPACE OR CLICK TO PLAY', SW / 2, SH - 38, '#ffffff', { align: 'center', shadow: '#10121c' });
+  smallText(ctx, 'COURSES FROM THE FAIRWAY PIXELS GENERATOR. ART MADE WITH PIXELLAB.', SW / 2, SH - 14, C.dim, { align: 'center' });
 }
 
 function setupRows() {
