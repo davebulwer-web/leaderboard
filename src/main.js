@@ -273,7 +273,7 @@ function updateSwing(dt) {
     if (s.level <= SNAP_BOTTOM) { s.level = SNAP_BOTTOM; s.snap = SNAP_BOTTOM; strike(); }
   } else if (s.stage === 3) {
     s.anim += dt;
-    if (s.anim >= (game.club === PUTTER ? 0.07 : 0.12) && !s.launched) { s.launched = true; launch(); }
+    if (s.anim >= (game.club === PUTTER ? 0.07 : 0.06) && !s.launched) { s.launched = true; launch(); }
   }
 }
 
@@ -533,8 +533,9 @@ function drawAimMarker() {
   }
 }
 
-// Frames: swing00 address, 01-05 back to the top, 06 the top, 07-08 down,
-// 09 impact, 10-13 through to the finish. Putts: 00 address, 01-04 back, 05-08 through.
+// Frames: swing00 address, 01-05 back to the top, 06 the top, 07 coming down,
+// 08 impact, 09-10 through, 11 turning to the target, 12 the finish (from behind).
+// Putts: 00 address, 01-04 back, 05-08 through.
 function golferFrame() {
   const s = game.swing;
   const t = s && s.stage === 3 ? s.anim + (game.flight ? game.flight.t : 0) : 0;
@@ -548,8 +549,8 @@ function golferFrame() {
   if (!s || game.phase === 'aim') return seq[0];
   if (s.stage === 1) return seq[Math.min(5, Math.round(s.level * 5))];
   if (s.stage === 2) return seq[6];
-  // Down, through the ball on frame 9, and hold the finish.
-  return seq[Math.min(seq.length - 1, 7 + Math.floor(t / 0.06))];
+  // Down, through the ball on frame 8, and hold the finish.
+  return seq[Math.min(seq.length - 1, 7 + Math.floor(t / (t < 0.12 ? 0.06 : 0.09)))];
 }
 
 // The golfer stands side on, level with the ball, scaled to the world like everything else.

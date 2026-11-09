@@ -8,7 +8,7 @@ const path = require('path');
   await pg.waitForTimeout(4000);
   await pg.evaluate(() => { window.pinHigh.game.banner = null; window.pinHigh.game.hints = false; });
   const shots = [];
-  const grab = async () => shots.push(await pg.screenshot({ clip: { x: 90, y: 120, width: 160, height: 150 } }));
+  const grab = async () => shots.push(await pg.screenshot({ clip: { x: 40, y: 110, width: 200, height: 170 } }));
   await grab();
   await pg.keyboard.down(' ');
   for (let i = 0; i < 5; i++) { await pg.waitForTimeout(250); await grab(); }
