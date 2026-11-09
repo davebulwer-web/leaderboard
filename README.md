@@ -38,7 +38,7 @@ Plain JavaScript and a canvas, no engine or libraries.
 
 ## Art
 
-All the art was made with [Pixellab](https://pixellab.ai): the golfer's address pose, swing and putting stroke (animated from the address pose), eleven trees, four bushes, the flag and a horizon backdrop for each course style. The originals are in `assets/raw`; `tools/pl.py`, `tools/gen-scenery.sh` and `tools/gen-backdrops.sh` regenerate them (they need `PIXELLAB_API_KEY`), and `python3 tools/pack-assets.py` packs them into `src/assets.js`.
+All the art was made with [Pixellab](https://pixellab.ai): the golfer's address pose, swing and putting stroke (animated from the address pose), eleven trees, four bushes, the flag and a horizon backdrop for each course style. The swing and putting stroke are posed with Pixellab's skeleton animation (`tools/skeleton-swing.py`): a skeleton per frame through address, takeaway, top, downswing, impact and finish. The originals are in `assets/raw`; `tools/pl.py`, `tools/gen-scenery.sh` and `tools/gen-backdrops.sh` regenerate them (they need `PIXELLAB_API_KEY`), and `python3 tools/pack-assets.py` packs them into `src/assets.js`.
 
 ![Alpine](screenshots/07-alpine-bunker.png)
 ![Desert](screenshots/08-desert-tee.png)

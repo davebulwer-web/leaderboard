@@ -47,7 +47,7 @@ for im in ims.values():
     box = b if box is None else (min(box[0], b[0]), min(box[1], b[1]), max(box[2], b[2]), max(box[3], b[3]))
 golfer = {k: uri(im.crop(box)) for k, im in ims.items()}
 # Where the ball sits relative to the cropped frames (measured on the address pose).
-ball = [71 - box[0], 113 - box[1]]
+ball = [65 - box[0], 112 - box[1]]
 # Feet: bottom of the address pose, and the golfer's height in pixels (for scaling to the world).
 feet = [41 - box[0], 114 - box[1]]
 
